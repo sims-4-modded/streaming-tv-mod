@@ -30,22 +30,17 @@ extern "C" __declspec(dllexport) uint32_t Ts4ModApiVersion()
 	return TS4_MOD_API_VERSION;
 }
 
-extern "C" __declspec(dllexport) void Ts4ModGetInfo(Ts4ModInfo* info)
+extern "C" __declspec(dllexport) const Ts4ModInfo* Ts4ModGetInfo()
 {
-	if (info == nullptr)
-	{
-		return;
-	}
-	info->id = k_ModId;
-	info->name = k_ModName;
-	info->version = k_ModVersion;
+	static constexpr Ts4ModInfo k_Info {.id = k_ModId, .name = k_ModName, .version = k_ModVersion};
+	return &k_Info;
 }
 
-extern "C" __declspec(dllexport) uint32_t Ts4ModInit(const Ts4HostApi* api)
+extern "C" __declspec(dllexport) uint32_t Ts4ModInit(const Ts4HostApi* api, uint32_t apiVersion)
 {
 	try
 	{
-		auto host = ts4_mod::sdk::ModHost::Create(api);
+		auto host = ts4_mod::sdk::ModHost::Create(api, apiVersion, k_ModId);
 		if (!host)
 		{
 			// Without a correct table, the mod cannot write to the log. The extender writes the reason.

@@ -50,11 +50,10 @@ ts4::Result<std::unique_ptr<TemplateMod>> TemplateMod::Start(std::unique_ptr<sdk
 	auto settings = ReadSettings(*host);
 	if (!settings)
 	{
-		host->Error("template mod: cannot start: {}", settings.GetError().message);
+		host->Error("cannot start: {}", settings.GetError().message);
 		return settings.GetError();
 	}
-	host->Info("template mod: start on the game version {}, settings {}", ToString(host->Version()),
-	           TemplateSettingsJson(*settings).dump());
+	host->Info("start on the game version {}, settings {}", ToString(host->Version()), TemplateSettingsJson(*settings).dump());
 	return std::unique_ptr<TemplateMod>(new TemplateMod(std::move(host), *settings));
 }
 
@@ -66,7 +65,7 @@ TemplateMod::TemplateMod(std::unique_ptr<sdk::ModHost> host, TemplateSettings se
 
 TemplateMod::~TemplateMod()
 {
-	_host->Info("template mod: stop");
+	_host->Info("stop");
 }
 
 } // namespace ts4_mod::template_mod
