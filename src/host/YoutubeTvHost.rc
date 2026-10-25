@@ -1,0 +1,6 @@
+// Copyright (c) 2026 Sims 4 mods developers
+// The resources of youtube_tv_host.exe: the template of the player page.
+
+#include "Resource.h"
+
+IDR_PLAYER_PAGE RCDATA "player.html"

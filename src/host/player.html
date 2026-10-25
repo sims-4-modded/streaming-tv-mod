@@ -1,0 +1,114 @@
+<!doctype html>
+<!--
+  Copyright (c) 2026 Sims 4 mods developers
+
+  The page of the helper youtube_tv_host. It holds the official YouTube player (the IFrame Player API), and it sends
+  the events of the player to the helper as console messages: the nonce, then one JSON object. The helper calls the
+  functions of window.ytv to control the player. The helper puts the values of {{NONCE}}, {{VIDEO_ID}} and {{START}}
+  into this template.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>YouTube TV</title>
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+  #player { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+</style>
+</head>
+<body>
+<div id="player"></div>
+<script>
+"use strict";
+(() => {
+  const nonce = "{{NONCE}}";
+  const videoId = "{{VIDEO_ID}}";
+  const start = {{START}};
+  let player = null;
+  let ready = false;
+
+  // Send one event to the helper.
+  const send = (event) => console.log(nonce + JSON.stringify(event));
+
+  // Tell the helper which media formats this browser can play. YouTube selects its format from these.
+  const codecs = () => {
+    const types = {
+      vp9: 'video/webm; codecs="vp9"',
+      av1: 'video/mp4; codecs="av01.0.05M.08"',
+      h264: 'video/mp4; codecs="avc1.4d401f"',
+      opus: 'audio/webm; codecs="opus"',
+      aac: 'audio/mp4; codecs="mp4a.40.2"',
+    };
+    const result = {};
+    for (const [name, type] of Object.entries(types)) {
+      result[name] = typeof MediaSource !== "undefined" && MediaSource.isTypeSupported(type);
+    }
+    return result;
+  };
+
+  const sendTime = () => {
+    if (!ready) {
+      return;
+    }
+    send({
+      event: "time",
+      time: player.getCurrentTime(),
+      duration: player.getDuration(),
+      rate: player.getPlaybackRate(),
+      state: player.getPlayerState(),
+    });
+  };
+
+  // The helper calls these functions.
+  window.ytv = {
+    play: () => ready && player.playVideo(),
+    pause: () => ready && player.pauseVideo(),
+    setRate: (rate) => ready && player.setPlaybackRate(rate),
+    seek: (seconds) => ready && player.seekTo(seconds, true),
+  };
+
+  window.onYouTubeIframeAPIReady = () => {
+    player = new YT.Player("player", {
+      width: "100%",
+      height: "100%",
+      videoId: videoId,
+      playerVars: {
+        autoplay: 1,
+        controls: 0,
+        disablekb: 1,
+        fs: 0,
+        playsinline: 1,
+        rel: 0,
+        start: start,
+        origin: window.location.origin,
+      },
+      events: {
+        onReady: () => {
+          ready = true;
+          player.unMute();
+          player.setVolume(100);
+          send({
+            event: "ready",
+            duration: player.getDuration(),
+            rates: player.getAvailablePlaybackRates(),
+            codecs: codecs(),
+          });
+          player.playVideo();
+          setInterval(sendTime, 500);
+        },
+        onStateChange: (e) => send({ event: "state", state: e.data }),
+        onPlaybackRateChange: (e) => send({ event: "rate", rate: e.data }),
+        onPlaybackQualityChange: (e) => send({ event: "quality", quality: e.data }),
+        onError: (e) => send({ event: "error", code: e.data }),
+      },
+    });
+  };
+
+  const api = document.createElement("script");
+  api.src = "https://www.youtube.com/iframe_api";
+  api.onerror = () => send({ event: "error", code: -1, message: "the IFrame Player API did not load" });
+  document.head.appendChild(api);
+})();
+</script>
+</body>
+</html>

@@ -54,6 +54,12 @@ if (WIN32)
   target_compile_definitions(youtube_tv PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
   target_link_libraries(youtube_tv PRIVATE ts4_youtube_tv_core ts4_mod_sdk)
   ts4_set_warnings(youtube_tv)
+
+  # The helper process with CEF. It needs the CEF distribution of cmake/Cef.cmake; without it the build skips it.
+  add_subdirectory(src/host)
+
+  # The test client of the helper. It needs no CEF.
+  add_subdirectory(tools/host_probe)
 endif ()
 
 if (TS4_YOUTUBE_TV_BUILD_TESTS)
