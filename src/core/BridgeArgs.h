@@ -8,11 +8,14 @@
 #include <cstdint>
 
 #include <array>
+#include <optional>
+#include <span>
 #include <string_view>
 
 #include <common/Result.h>
 #include <core/Sessions.h>
 #include <core/SpeedPolicy.h>
+#include <nlohmann/json.hpp>
 
 /// The checks of the arguments of the C interface that the script mod calls (`YoutubeTv*` exports, version 1). The
 /// script mod calls the interface through `ctypes`, so each pointer can be null and each value can be wrong. Each
@@ -54,6 +57,13 @@ struct SpeedArguments
 
 /// Read the speed: a known `clock.ClockSpeedMode`, a finite scale of 0 or more, and a flag of 0 or 1.
 [[nodiscard]] ts4::Result<SpeedArguments> ReadSpeed(std::uint32_t clockSpeedMode, double speedScale, std::uint32_t superSpeed);
+
+/// Read the field `objectId` of the parameters of a query: a whole number, a text with a decimal or a hex number
+/// (`0x...`), or "any" for `k_AnyObject`. A missing field gives `fallback`, or an error if `fallback` is empty.
+[[nodiscard]] ts4::Result<std::uint64_t> ReadObjectIdField(const nlohmann::json& params, std::optional<std::uint64_t> fallback);
+
+/// Read a field of three numbers (a position) or four numbers (a quaternion) of the parameters of a query.
+[[nodiscard]] ts4::Result<ObjectTransform> ReadTransformFields(const nlohmann::json& params);
 
 /// Copy a text into a buffer of `size` bytes, with a terminating zero, and return the length of the full text. If the
 /// buffer is too small, the function copies the first part of the text, and does not divide a UTF-8 character. A null

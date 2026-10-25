@@ -126,6 +126,17 @@ TEST(Sessions, ReadyAppliesTheSpeedOfTheGame)
 	EXPECT_EQ(Types(manager.SetSpeed(ClockSpeedMode::InteractionStartupSpeed, false)), (std::vector {CommandType::Play}));
 }
 
+TEST(Sessions, NewSpeedRulesApplyAtOnce)
+{
+	SessionManager manager({});
+	ASSERT_TRUE(manager.Play(k_Tv, k_Url));
+	(void)manager.SetSpeed(ClockSpeedMode::Speed2, false);
+	(void)manager.OnEvent(Event("ready", manager.Find(k_Tv)->helperId));
+	const auto actions = manager.SetSettings({.speed = {.speed2Rate = 1.5}});
+	ASSERT_EQ(Types(actions), (std::vector {CommandType::SetRate}));
+	EXPECT_EQ(actions.commands[0].rate, 1.5);
+}
+
 TEST(Sessions, PausesAgainIfThePlayerStartsByItself)
 {
 	SessionManager manager({});

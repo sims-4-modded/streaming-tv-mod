@@ -44,6 +44,12 @@ SessionManager::SessionManager(SessionSettings settings)
 {
 }
 
+SessionActions SessionManager::SetSettings(SessionSettings settings)
+{
+	_settings = std::move(settings);
+	return SetSpeed(_mode, _superSpeed);
+}
+
 SessionManager::KnownObject& SessionManager::Known(std::uint64_t objectId)
 {
 	if (_objects.size() >= k_MaxKnownObjects && !_objects.contains(objectId))

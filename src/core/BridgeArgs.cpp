@@ -4,10 +4,12 @@
 
 #include "BridgeArgs.h"
 
+#include <charconv>
 #include <cmath>
 #include <cstring>
 
 #include <algorithm>
+#include <string>
 
 namespace ts4_mod::youtube_tv::bridge
 {
@@ -126,6 +128,86 @@ ts4::Result<SpeedArguments> ReadSpeed(std::uint32_t clockSpeedMode, double speed
 		return ts4::MakeError("the super speed flag {} is not 0 or 1", superSpeed);
 	}
 	return SpeedArguments {.mode = *mode, .scale = speedScale, .superSpeed = superSpeed == 1};
+}
+
+ts4::Result<std::uint64_t> ReadObjectIdField(const nlohmann::json& params, std::optional<std::uint64_t> fallback)
+{
+	if (!params.is_object())
+	{
+		return ts4::MakeError("the parameters are not a JSON object");
+	}
+	const auto it = params.find("objectId");
+	if (it == params.end() || it->is_null())
+	{
+		if (!fallback)
+		{
+			return ts4::MakeError("the parameter \"objectId\" is necessary");
+		}
+		return *fallback;
+	}
+	if (it->is_number_unsigned() || (it->is_number_integer() && it->get<std::int64_t>() >= 0))
+	{
+		return it->get<std::uint64_t>();
+	}
+	if (!it->is_string())
+	{
+		return ts4::MakeError("the parameter \"objectId\" is not a whole number of 0 or more, a text or \"any\"");
+	}
+	const auto text = it->get<std::string>();
+	if (text == "any")
+	{
+		return k_AnyObject;
+	}
+	std::string_view digits = text;
+	int base = 10;
+	if (digits.starts_with("0x") || digits.starts_with("0X"))
+	{
+		digits.remove_prefix(2);
+		base = 16;
+	}
+	std::uint64_t value = 0;
+	const auto* end = digits.data() + digits.size();
+	const auto [last, error] = std::from_chars(digits.data(), end, value, base);
+	if (digits.empty() || error != std::errc {} || last != end)
+	{
+		return ts4::MakeError("the parameter \"objectId\" \"{}\" is not a number", text);
+	}
+	return value;
+}
+
+ts4::Result<ObjectTransform> ReadTransformFields(const nlohmann::json& params)
+{
+	const auto numbers = [&](const char* name, std::size_t count, std::span<float> out) -> ts4::Result<void> {
+		const auto it = params.find(name);
+		if (it == params.end() || !it->is_array() || it->size() != count ||
+		    !std::ranges::all_of(*it, [](const nlohmann::json& value) { return value.is_number(); }))
+		{
+			return ts4::MakeError("the parameter \"{}\" is not {} numbers", name, count);
+		}
+		for (std::size_t index = 0; index < count; ++index)
+		{
+			out[index] = (*it)[index].get<float>();
+		}
+		return {};
+	};
+	if (!params.is_object())
+	{
+		return ts4::MakeError("the parameters are not a JSON object");
+	}
+	std::array<float, 3> position {};
+	std::array<float, 4> orientation {0.0F, 0.0F, 0.0F, 1.0F};
+	if (auto read = numbers("position", 3, position); !read)
+	{
+		return read.GetError();
+	}
+	if (params.contains("orientation"))
+	{
+		if (auto read = numbers("orientation", 4, orientation); !read)
+		{
+			return read.GetError();
+		}
+	}
+	return ReadTransform(position.data(), orientation.data());
 }
 
 std::uint32_t CopyText(std::string_view text, char* buffer, std::uint32_t size)

@@ -16,6 +16,12 @@ namespace
 using namespace ts4_mod::youtube_tv;
 using namespace ts4_mod::youtube_tv::bridge;
 
+/// The value of a result, or `fallback` for an error.
+[[nodiscard]] std::uint64_t Or(const ts4::Result<std::uint64_t>& result, std::uint64_t fallback)
+{
+	return result ? *result : fallback;
+}
+
 TEST(BridgeArgs, ReadsAUrl)
 {
 	const auto url = ReadUrl("https://youtu.be/M7lc1UVf-VE");
@@ -89,6 +95,31 @@ TEST(BridgeArgs, ReadsTheSpeed)
 	EXPECT_FALSE(ReadSpeed(1, -1.0, 0));
 	EXPECT_FALSE(ReadSpeed(1, NAN, 0));
 	EXPECT_FALSE(ReadSpeed(1, 1.0, 2));
+}
+
+TEST(BridgeArgs, ReadsTheObjectIdOfAQuery)
+{
+	EXPECT_EQ(Or(ReadObjectIdField(nlohmann::json {{"objectId", 1234}}, std::nullopt), 0), 1234U);
+	EXPECT_EQ(Or(ReadObjectIdField(nlohmann::json {{"objectId", "0x1F"}}, std::nullopt), 0), 0x1FU);
+	EXPECT_EQ(Or(ReadObjectIdField(nlohmann::json {{"objectId", "77"}}, std::nullopt), 0), 77U);
+	EXPECT_EQ(Or(ReadObjectIdField(nlohmann::json {{"objectId", "any"}}, std::nullopt), 1), k_AnyObject);
+	EXPECT_EQ(Or(ReadObjectIdField(nlohmann::json::object(), k_AnyObject), 1), k_AnyObject);
+	EXPECT_FALSE(ReadObjectIdField(nlohmann::json::object(), std::nullopt));
+	EXPECT_FALSE(ReadObjectIdField(nlohmann::json {{"objectId", -1}}, std::nullopt));
+	EXPECT_FALSE(ReadObjectIdField(nlohmann::json {{"objectId", "tv"}}, std::nullopt));
+	EXPECT_FALSE(ReadObjectIdField(nlohmann::json {{"objectId", "0x"}}, std::nullopt));
+	EXPECT_FALSE(ReadObjectIdField(nlohmann::json::array(), std::nullopt));
+}
+
+TEST(BridgeArgs, ReadsTheTransformOfAQuery)
+{
+	const auto transform = ReadTransformFields(nlohmann::json {{"position", {1, 2, 3}}});
+	ASSERT_TRUE(transform) << transform.GetError().message;
+	EXPECT_EQ(transform->position, (std::array {1.0F, 2.0F, 3.0F}));
+	EXPECT_EQ(transform->orientation, (std::array {0.0F, 0.0F, 0.0F, 1.0F}));
+	EXPECT_FALSE(ReadTransformFields(nlohmann::json {{"position", {1, 2}}}));
+	EXPECT_FALSE(ReadTransformFields(nlohmann::json {{"position", {1, 2, 3}}, {"orientation", {0, 0, 0, 0}}}));
+	EXPECT_FALSE(ReadTransformFields(nlohmann::json {{"position", {1, "a", 3}}}));
 }
 
 TEST(BridgeArgs, CopiesTheTextWithAZero)

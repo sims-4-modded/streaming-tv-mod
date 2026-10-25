@@ -108,6 +108,10 @@ class SessionManager
 public:
 	explicit SessionManager(SessionSettings settings);
 
+	/// Use new settings. The size, the frame rate and the matrix apply to the next videos. The result has the
+	/// commands of the new speed rules.
+	[[nodiscard]] SessionActions SetSettings(SessionSettings settings);
+
 	/// Start a video on the TV `objectId`, or replace its video. `url` is a video id or a URL of a YouTube video. The
 	/// result is an error for a URL that is not correct, or if the limit of videos is full.
 	[[nodiscard]] ts4::Result<SessionActions> Play(std::uint64_t objectId, std::string_view url,
