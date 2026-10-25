@@ -25,8 +25,23 @@ add_subdirectory(external/common)
 
 find_package(nlohmann_json CONFIG REQUIRED)
 
-# The logic of the mod that does not need the game: the settings.
-add_library(ts4_youtube_tv_core STATIC src/core/YoutubeTvSettings.h src/core/YoutubeTvSettings.cpp)
+# The logic of the mod that does not need the game: the settings, the URL of a video, and the protocol between the
+# helper and its parent (the commands, the events, the shared memory and the audio ring).
+add_library(
+  ts4_youtube_tv_core STATIC
+  src/core/AudioRing.h
+  src/core/HostCommand.h
+  src/core/HostProtocol.h
+  src/core/PlayerPage.h
+  src/core/YoutubeTvSettings.h
+  src/core/YoutubeUrl.h
+  src/core/AudioRing.cpp
+  src/core/HostCommand.cpp
+  src/core/HostProtocol.cpp
+  src/core/PlayerPage.cpp
+  src/core/YoutubeTvSettings.cpp
+  src/core/YoutubeUrl.cpp
+)
 target_include_directories(ts4_youtube_tv_core PUBLIC src)
 target_link_libraries(ts4_youtube_tv_core PUBLIC ts4_common ts4_mod_core nlohmann_json::nlohmann_json)
 ts4_set_warnings(ts4_youtube_tv_core)
