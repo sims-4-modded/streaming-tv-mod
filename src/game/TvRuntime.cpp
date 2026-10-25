@@ -19,6 +19,8 @@ constexpr auto k_PumpInterval = std::chrono::milliseconds(4);
 constexpr auto k_ReportInterval = std::chrono::seconds(5);
 /// The diagnostic lines name only this count of channels, so that the log stays small.
 constexpr std::size_t k_MaxSeenChannels = 64;
+/// The diagnostic lines of the playlist callbacks name only this count of calls of each callback.
+constexpr std::uint32_t k_MaxPlaylistLines = 40;
 
 /// The audio ring of one video as the source of a voice. Only the thread of the audio reads it.
 class RingSource final: public PcmSource
@@ -385,6 +387,12 @@ void TvRuntime::OnPlaylistMessage(std::uintptr_t message)
 	{
 		_pendingObject = ReadMessageObjectId(*_memory, message, *_channel);
 	}
+	if (_playlistMessageLines < k_MaxPlaylistLines)
+	{
+		++_playlistMessageLines;
+		Log(TS4_LOG_INFO, std::format("frames: playlist message {} for the object {}", _playlistMessageLines,
+		                              _pendingObject ? std::format("{:#x}", *_pendingObject) : std::string("unknown")));
+	}
 }
 
 void TvRuntime::OnPlaylistMessageDone()
@@ -396,6 +404,13 @@ void TvRuntime::OnPlaylistMessageDone()
 void TvRuntime::OnSetPlaylist(std::uintptr_t component)
 {
 	const std::lock_guard lock(_mutex);
+	if (_setPlaylistLines < k_MaxPlaylistLines && _channel)
+	{
+		++_setPlaylistLines;
+		Log(TS4_LOG_INFO, std::format("frames: set playlist {}: component {:#x}, channel {:#x}, object {}", _setPlaylistLines,
+		                              component, ReadComponentChannel(*_memory, component, *_channel),
+		                              _pendingObject ? std::format("{:#x}", *_pendingObject) : std::string("none")));
+	}
 	if (!_channel || !_pendingObject)
 	{
 		return;

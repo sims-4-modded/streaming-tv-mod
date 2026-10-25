@@ -146,6 +146,8 @@ private:
 	// The diagnostics of the frames.
 	std::set<std::uintptr_t> _seenChannels;
 	std::uint64_t _matchedCalls = 0;
+	std::uint32_t _playlistMessageLines = 0;
+	std::uint32_t _setPlaylistLines = 0;
 	std::uint64_t _frontFrame = 0;
 	std::array<double, 3> _meansBefore {};
 	std::array<double, 3> _meansAfter {};
