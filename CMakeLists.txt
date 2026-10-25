@@ -31,6 +31,7 @@ add_library(
   ts4_youtube_tv_core STATIC
   src/core/AudioRing.h
   src/core/CodeOffsets.h
+  src/core/FrameWriter.h
   src/core/HostCommand.h
   src/core/HostProtocol.h
   src/core/PlayerPage.h
@@ -40,6 +41,7 @@ add_library(
   src/core/YoutubeUrl.h
   src/core/AudioRing.cpp
   src/core/CodeOffsets.cpp
+  src/core/FrameWriter.cpp
   src/core/HostCommand.cpp
   src/core/HostProtocol.cpp
   src/core/PlayerPage.cpp
