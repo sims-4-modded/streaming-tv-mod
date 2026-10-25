@@ -5,6 +5,7 @@ start a new mod. It has the folder structure, the config files, the build and th
 
 - `src/core`: the logic of the mod that does not need the game (here: the settings). A static library with tests.
 - `src/game`: the DLL entry (`ModMain.cpp`) and the parts that touch the game. Windows only.
+- `src/host`: the helper `youtube_tv_host.exe` (CEF with the YouTube IFrame Player API). See `docs/host.md`.
 - `tests`: the GoogleTest tests of `src/core`, with fakes, never with the game or game data.
 - `external/common`: the shared code (git submodule): `Result`, the game version, the C interface of the extender
   (`Ts4ModApi.h`) and its C++ side (`ModHost`).
@@ -56,3 +57,19 @@ The DLL goes into the folder of DLL mods of the extender. Only the install tool 
 ```bat
 python ..\mod_loader\tools\install.py mods add build\x64-release\youtube_tv.dll
 ```
+
+## The helper youtube_tv_host.exe
+
+The helper plays the video in CEF without a window, and gives the frames (I420) and the sound (PCM) to the DLL mod
+through shared memory. The build makes it only if the CEF distribution of `docs/cef.md` is in `D:\sims_4\cache\cef`
+(or in the folder of the cache variable `TS4_CEF_ROOT`).
+
+```bat
+build\x64-release\tools\host_probe.exe
+python tools\install_host.py install
+python tools\install_host.py status
+```
+
+`host_probe.exe` starts the helper, plays one video and checks the frames, the sound and the commands.
+`install_host.py` copies the helper and the CEF runtime to `%LOCALAPPDATA%\Sims4Mods\youtube_tv\`. The protocol, the
+shared memory and the limits are in `docs/host.md`.
