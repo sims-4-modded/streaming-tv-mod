@@ -291,6 +291,16 @@ void TvRuntime::UpdateAudio()
 	_audio->Update();
 }
 
+std::shared_ptr<MappedVideo> TvRuntime::VideoOf(std::uint64_t objectId)
+{
+	const auto* session = _sessions.Find(objectId);
+	if (session == nullptr || !_client)
+	{
+		return nullptr;
+	}
+	return _client->Video(session->helperId);
+}
+
 void TvRuntime::SetListenerPose(const AudioPose& pose)
 {
 	_listener = pose;

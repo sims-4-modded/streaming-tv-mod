@@ -82,6 +82,10 @@ public:
 	/// The listener for the probe, which has no camera.
 	void SetListenerPose(const AudioPose& pose);
 
+	/// The shared memory of the video of a TV, or null. The probe uses it.
+	[[nodiscard]] std::shared_ptr<MappedVideo> VideoOf(std::uint64_t objectId);
+	[[nodiscard]] const Session* SessionOf(std::uint64_t objectId) { return _sessions.Find(objectId); }
+
 	/// The audio engine, or null. The probe uses it.
 	[[nodiscard]] AudioEngine* Audio() { return _audio.get(); }
 
