@@ -12,13 +12,15 @@
 #include <optional>
 #include <span>
 #include <type_traits>
+#include <vector>
 
+#include <common/Result.h>
 #include <core/FrameWriter.h>
 #include <core/Sessions.h>
 #include <core/VideoLayout.h>
 
 /// The reads of the video objects of the game: the frame and its planes, the channel of a renderer, the clip key of
-/// a channel, the object id of a message and the camera matrix of the listener. Each read goes through
+/// a channel, the object id and the clip keys of a message and the camera matrix of the listener. Each read goes through
 /// `MemoryAccess`. In the game, the access checks each page before it reads. In the tests, the access is a buffer.
 namespace ts4_mod::youtube_tv
 {
@@ -67,13 +69,14 @@ template <typename T>
 [[nodiscard]] std::optional<ScreenKey> ReadChannelClipKey(const MemoryAccess& memory, std::uintptr_t channel,
                                                           const game_layout::ChannelLayout& layout);
 
-/// The channel of a video component, or 0.
-[[nodiscard]] std::uintptr_t ReadComponentChannel(const MemoryAccess& memory, std::uintptr_t component,
-                                                  const game_layout::ChannelLayout& layout);
-
 /// The object id in the message of a list of clips.
 [[nodiscard]] std::optional<std::uint64_t> ReadMessageObjectId(const MemoryAccess& memory, std::uintptr_t message,
                                                                const game_layout::ChannelLayout& layout);
+
+/// The clip keys in the message of a list of clips, in their order. The result is an error if a read fails or if the
+/// bytes are not a correct message.
+[[nodiscard]] ts4::Result<std::vector<ScreenKey>> ReadMessageClipKeys(const MemoryAccess& memory, std::uintptr_t message,
+                                                                      const game_layout::ChannelLayout& layout);
 
 /// The copy of the camera matrix in the state of the listener.
 [[nodiscard]] std::optional<std::array<float, 16>> ReadListenerMatrix(const MemoryAccess& memory, std::uintptr_t state,

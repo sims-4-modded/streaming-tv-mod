@@ -28,6 +28,7 @@
 #include <vector>
 
 #include <core/GameObjects.h>
+#include <core/PlaylistMessage.h>
 #include <core/VideoLayout.h>
 #include <windows.h>
 
@@ -150,8 +151,8 @@ int ToneTest(Report& report)
 	return 0;
 }
 
-/// Fake objects of the game: a renderer, a channel, a frame with three planes, a message and a component, with the
-/// offsets of `k_Layout`.
+/// Fake objects of the game: a renderer, a channel that plays one clip, a frame with three planes, and a message with
+/// a list of clips for the TV, with the offsets of `k_Layout`.
 class FakeGame
 {
 public:
@@ -165,22 +166,24 @@ public:
 	                                                       .rendererHeight = 0x90,
 	                                                       .rendererChannel = 0xA0};
 	static constexpr game_layout::ChannelLayout k_ChannelLayout {
-	    .componentChannel = 0x20, .messageObjectId = 0x28, .channelClipKey = 0xA0};
+	    .messageObjectId = 0x30, .messageData = 0x48, .messageSize = 0x50, .channelClipKey = 0xA0};
 	/// The bytes of guard after each plane.
 	static constexpr std::size_t k_GuardBytes = 4096;
 
-	FakeGame(std::uint32_t width, std::uint32_t height, std::uint32_t padding)
+	FakeGame(std::uint32_t width, std::uint32_t height, std::uint32_t padding, const ScreenKey& clip)
 	    : _renderer(0x200)
 	    , _channel(0x200)
 	    , _frame(0x200)
 	    , _message(0x100)
-	    , _component(0x100)
+	    , _messageBytes(playlist::MakeMessage(1, std::span(&clip, 1)))
 	{
 		Put(_renderer, k_Layout.rendererChannel, Address(_channel));
 		Put(_renderer, k_Layout.rendererWidth, width);
 		Put(_renderer, k_Layout.rendererHeight, height);
+		Put(_channel, k_ChannelLayout.channelClipKey, clip);
 		Put(_message, k_ChannelLayout.messageObjectId, k_Tv);
-		Put(_component, k_ChannelLayout.componentChannel, Address(_channel));
+		Put(_message, k_ChannelLayout.messageData, Address(_messageBytes));
+		Put(_message, k_ChannelLayout.messageSize, static_cast<std::int32_t>(_messageBytes.size()));
 		for (std::size_t index = 0; index < 3; ++index)
 		{
 			const auto w = index == 0 ? width : (width + 1) / 2;
@@ -203,7 +206,6 @@ public:
 	[[nodiscard]] std::uintptr_t Renderer() const { return Address(_renderer); }
 	[[nodiscard]] std::uintptr_t Frame() const { return Address(_frame); }
 	[[nodiscard]] std::uintptr_t Message() const { return Address(_message); }
-	[[nodiscard]] std::uintptr_t Component() const { return Address(_component); }
 
 	struct Plane
 	{
@@ -256,7 +258,7 @@ private:
 	std::vector<std::byte> _channel;
 	std::vector<std::byte> _frame;
 	std::vector<std::byte> _message;
-	std::vector<std::byte> _component;
+	std::vector<std::byte> _messageBytes;
 	std::array<Plane, 3> _planes;
 };
 
@@ -330,11 +332,9 @@ int HelperTest(Report& report, const Options& options)
 	runtime.SetChannelLayout(FakeGame::k_ChannelLayout);
 
 	// The same size as the frames of the helper, with padding in each row.
-	FakeGame same(640, 368, 64);
-	// The game links the TV to its channel when it applies a list of clips.
+	FakeGame same(640, 368, 64, {.instance = 0x5D630A58015C3E89, .type = 0x545AC67A, .group = 0x00BF458B});
+	// The game gives a list of clips to the TV. The first frame of the channel that plays that clip links the TV.
 	runtime.OnPlaylistMessage(same.Message());
-	runtime.OnSetPlaylist(same.Component());
-	runtime.OnPlaylistMessageDone();
 
 	const auto played = runtime.Play(k_Tv, options.video);
 	report.Check("play", played.HasValue(), played ? "" : played.GetError().message);
@@ -365,10 +365,8 @@ int HelperTest(Report& report, const Options& options)
 	report.Check("no write outside the planes of the same size", same.GuardsKept());
 
 	// A different size: the runtime scales the frame and makes black bars.
-	FakeGame other(480, 360, 16);
+	FakeGame other(480, 360, 16, {.instance = 0x0D432B7F5C14E35D, .type = 0x376840D7, .group = 0});
 	runtime.OnPlaylistMessage(other.Message());
-	runtime.OnSetPlaylist(other.Component());
-	runtime.OnPlaylistMessageDone();
 	const auto before = runtime.SessionOf(k_Tv)->framesWritten;
 	runtime.OnRenderFrame(other.Renderer(), other.Frame());
 	const auto rect = FitImage(640, 368, 480, 360);
@@ -381,8 +379,7 @@ int HelperTest(Report& report, const Options& options)
 	report.Check("no write outside the planes of the other size", other.GuardsKept());
 	// Link the TV to its first channel again.
 	runtime.OnPlaylistMessage(same.Message());
-	runtime.OnSetPlaylist(same.Component());
-	runtime.OnPlaylistMessageDone();
+	runtime.OnRenderFrame(same.Renderer(), same.Frame());
 
 	// The speed of the game.
 	runtime.SetSpeed(ClockSpeedMode::Paused, false);

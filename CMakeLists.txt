@@ -39,6 +39,7 @@ add_library(
   src/core/HostProtocol.h
   src/core/LineQueue.h
   src/core/PlayerPage.h
+  src/core/PlaylistMessage.h
   src/core/Sessions.h
   src/core/SpeedPolicy.h
   src/core/ThreadGate.h
@@ -55,6 +56,7 @@ add_library(
   src/core/HostCommand.cpp
   src/core/HostProtocol.cpp
   src/core/PlayerPage.cpp
+  src/core/PlaylistMessage.cpp
   src/core/Sessions.cpp
   src/core/SpeedPolicy.cpp
   src/core/Yuv.cpp

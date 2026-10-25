@@ -48,8 +48,7 @@ const std::initializer_list<std::uint8_t> k_RendererChannel = {0x48, 0x8B, 0x8E,
 const std::initializer_list<std::uint8_t> k_FrameFlip = {0x41, 0x0F, 0xB6, 0x87, 0xA1, 0x00,
                                                          0x00, 0x00, 0x84, 0xC0, 0x74, 0x26};
 // The other functions.
-const std::initializer_list<std::uint8_t> k_ComponentChannel = {0x48, 0x8B, 0xD9, 0x41, 0x8B, 0xF9,
-                                                                0x48, 0x8B, 0x49, 0x20, 0x49, 0x8B};
+const std::initializer_list<std::uint8_t> k_MessageBytes = {0x4C, 0x8B, 0x43, 0x50, 0x48, 0x8B, 0x53, 0x48, 0x48, 0x8D, 0x4D};
 const std::initializer_list<std::uint8_t> k_MessageObjectId = {0x48, 0x8B, 0xD9, 0x48, 0x83, 0xC1, 0x28, 0x48, 0x8D, 0x55};
 const std::initializer_list<std::uint8_t> k_ChannelClipKey = {0x48, 0x8D, 0x93, 0xA0, 0x00, 0x00, 0x00, 0x48, 0x8B, 0xCB, 0xE8};
 const std::initializer_list<std::uint8_t> k_ListenerMatrix = {0x41, 0x0F, 0x10, 0x8E, 0xF0, 0x00,
@@ -156,10 +155,12 @@ TEST(VideoLayout, RefusesARendererLayoutWithAMissingRule)
 	EXPECT_FALSE(game_layout::ReadRendererLayout(code));
 }
 
-/// The message code with the call of the lookup at 0x3000 + 16. The call goes to 0x4000.
+/// The message code with the call of the lookup at 0x3000 + 16, and the read of the bytes of the message. The call
+/// goes to 0x4000.
 std::vector<std::byte> MessageCode()
 {
-	auto code = Code({{0x48, 0x8B, 0xD9, 0x48, 0x83, 0xC1, 0x28, 0x48, 0x8D, 0x55, 0x77, 0xE8, 0x00, 0x00, 0x00, 0x00}});
+	auto code = Code(
+	    {{0x48, 0x8B, 0xD9, 0x48, 0x83, 0xC1, 0x28, 0x48, 0x8D, 0x55, 0x77, 0xE8, 0x00, 0x00, 0x00, 0x00}, k_MessageBytes});
 	const auto displacement = static_cast<std::uint32_t>(0x4000 - (0x3000 + 16 + 16));
 	for (std::size_t index = 0; index < 4; ++index)
 	{
@@ -185,10 +186,11 @@ const game_layout::CodeAt k_LookupAt = [](std::uintptr_t address, std::size_t si
 
 TEST(VideoLayout, ReadsTheChannelLayout)
 {
-	const auto layout =
-	    game_layout::ReadChannelLayout(Code({k_ComponentChannel}), MessageCode(), 0x3000, Code({k_ChannelClipKey}), k_LookupAt);
+	const auto layout = game_layout::ReadChannelLayout(MessageCode(), 0x3000, Code({k_ChannelClipKey}), k_LookupAt);
 	ASSERT_TRUE(layout) << layout.GetError().message;
-	EXPECT_EQ(layout->componentChannel, 0x20U);
+	// The pointer to the bytes of the list is at 0x48, and their count at 0x50.
+	EXPECT_EQ(layout->messageData, 0x48U);
+	EXPECT_EQ(layout->messageSize, 0x50U);
 	// The key of the object is at 0x28 in the message, and the id is 8 bytes into the key.
 	EXPECT_EQ(layout->messageObjectId, 0x30U);
 	EXPECT_EQ(layout->channelClipKey, 0xA0U);
@@ -197,10 +199,16 @@ TEST(VideoLayout, ReadsTheChannelLayout)
 TEST(VideoLayout, RefusesAChannelLayoutWithoutTheLookup)
 {
 	const game_layout::CodeAt none = [](std::uintptr_t, std::size_t) { return std::span<const std::byte> {}; };
-	EXPECT_FALSE(
-	    game_layout::ReadChannelLayout(Code({k_ComponentChannel}), MessageCode(), 0x3000, Code({k_ChannelClipKey}), none));
-	EXPECT_FALSE(game_layout::ReadChannelLayout(Code({k_ComponentChannel}), Code({k_MessageObjectId}), 0x3000,
-	                                            Code({k_ChannelClipKey}), k_LookupAt));
+	EXPECT_FALSE(game_layout::ReadChannelLayout(MessageCode(), 0x3000, Code({k_ChannelClipKey}), none));
+	EXPECT_FALSE(game_layout::ReadChannelLayout(Code({k_MessageObjectId, k_MessageBytes}), 0x3000, Code({k_ChannelClipKey}),
+	                                            k_LookupAt));
+}
+
+TEST(VideoLayout, RefusesAChannelLayoutWithoutTheBytesOfTheMessage)
+{
+	auto code = MessageCode();
+	code.resize(16 + 16 + 16, std::byte {0xCC});
+	EXPECT_FALSE(game_layout::ReadChannelLayout(code, 0x3000, Code({k_ChannelClipKey}), k_LookupAt));
 }
 
 TEST(VideoLayout, ReadsTheListenerLayout)
@@ -213,7 +221,6 @@ TEST(VideoLayout, ReadsTheListenerLayout)
 TEST(VideoLayout, TheSignaturesHaveTheirFullLength)
 {
 	EXPECT_EQ(game_layout::k_RenderFrameSignature.size, 27U);
-	EXPECT_EQ(game_layout::k_SetPlaylistSignature.size, 21U);
 	EXPECT_EQ(game_layout::k_PlaylistMessageSignature.size, 24U);
 	EXPECT_EQ(game_layout::k_ChannelUpdateSignature.size, 29U);
 	EXPECT_EQ(game_layout::k_ListenerSignature.size, 12U);

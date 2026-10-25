@@ -25,11 +25,8 @@ namespace ts4_mod::youtube_tv::game_layout
 /// video renderer and the frame.
 inline constexpr auto k_RenderFrameSignature =
     MakeSignature("48 8B C4 57 41 54 41 55 41 56 41 57 48 81 EC C0 00 00 00 48 C7 40 80 FE FF FF FF");
-/// The function that gives a list of clips to the video component of an object. It gets the component, the version
-/// of the list, the clip keys and the count of the keys.
-inline constexpr auto k_SetPlaylistSignature = MakeSignature("48 89 5C 24 10 48 89 6C 24 18 56 57 41 57 48 83 EC 30 48 8B D9");
 /// The function that applies a list of clips from the simulation to one object. It gets the message, which has the
-/// object id.
+/// object id and the bytes of the list.
 inline constexpr auto k_PlaylistMessageSignature =
     MakeSignature("40 55 56 57 48 8D 6C 24 B9 48 81 EC D0 00 00 00 48 C7 45 37 FE FF FF FF");
 /// The function that updates one video channel with the clock speed. The mod only reads its code.
@@ -41,7 +38,6 @@ inline constexpr auto k_ListenerSignature = MakeSignature("44 88 4C 24 20 55 56 
 /// The bytes of code after each signature match that the rules search. A window is not longer than its function, so a
 /// rule searches only the code of that function. Each rule must match exactly one place in its window.
 inline constexpr std::size_t k_RenderFrameWindow = 0x500;
-inline constexpr std::size_t k_SetPlaylistWindow = 0x150;
 inline constexpr std::size_t k_PlaylistMessageWindow = 0x200;
 inline constexpr std::size_t k_ChannelUpdateWindow = 0x6E0;
 inline constexpr std::size_t k_ListenerWindow = 0x200;
@@ -144,15 +140,6 @@ inline constexpr DisplacementRule k_FrameFlip {.name = "frame flip flag",
                                                .max = k_MaxObjectOffset,
                                                .alignment = 1};
 
-/// The video channel of a video component.
-inline constexpr DisplacementRule k_ComponentChannel {.name = "component channel",
-                                                      .pattern = "48 8B D9 41 8B F9 48 8B 49 ?? 49 8B",
-                                                      .at = 9,
-                                                      .size = DisplacementSize::Byte,
-                                                      .min = 0x8,
-                                                      .max = 0x78,
-                                                      .alignment = k_PointerAlignment};
-
 /// The key of the object in the message of a list of clips. The function gives the address of the key to the
 /// function that finds the object.
 inline constexpr DisplacementRule k_MessageObjectId {.name = "message object key",
@@ -176,6 +163,24 @@ inline constexpr DisplacementRule k_ObjectIdInKey {.name = "object id in the key
                                                    .min = 0,
                                                    .max = 0x38,
                                                    .alignment = k_PointerAlignment};
+
+/// The bytes of the list of clips in the message: the size, then the pointer. The function gives them to the reader
+/// of the message.
+inline constexpr std::string_view k_MessageBytesPattern = "4C 8B 43 ?? 48 8B 53 ?? 48 8D 4D";
+inline constexpr DisplacementRule k_MessageSize {.name = "message size",
+                                                 .pattern = k_MessageBytesPattern,
+                                                 .at = 3,
+                                                 .size = DisplacementSize::Byte,
+                                                 .min = 0x8,
+                                                 .max = 0x78,
+                                                 .alignment = k_PointerAlignment};
+inline constexpr DisplacementRule k_MessageData {.name = "message data",
+                                                 .pattern = k_MessageBytesPattern,
+                                                 .at = 7,
+                                                 .size = DisplacementSize::Byte,
+                                                 .min = 0x8,
+                                                 .max = 0x78,
+                                                 .alignment = k_PointerAlignment};
 
 /// The key of the clip that the channel plays now.
 inline constexpr DisplacementRule k_ChannelClipKey {.name = "channel clip key",
@@ -253,16 +258,18 @@ struct RendererLayout
 /// The offsets that link an object to its video channel.
 struct ChannelLayout
 {
-	std::size_t componentChannel = 0;
 	/// The object id in the message: the key of the object in the message, plus the id in the key.
 	std::size_t messageObjectId = 0;
+	/// The pointer to the bytes of the list of clips in the message, and their count (a 32-bit number).
+	std::size_t messageData = 0;
+	std::size_t messageSize = 0;
 	std::size_t channelClipKey = 0;
 };
 
-/// Read the offsets from the code of three functions. The message code starts at `messageCodeAddress`. `codeAt`
-/// gives the code of the function that finds the object of the message.
-[[nodiscard]] ts4::Result<ChannelLayout> ReadChannelLayout(std::span<const std::byte> setPlaylistCode,
-                                                           std::span<const std::byte> messageCode,
+/// Read the offsets from the code of the function that applies a message, of the function that finds the object of
+/// the message, and of the update of a channel. The message code starts at `messageCodeAddress`. `codeAt` gives the
+/// code of the function that finds the object.
+[[nodiscard]] ts4::Result<ChannelLayout> ReadChannelLayout(std::span<const std::byte> messageCode,
                                                            std::uintptr_t messageCodeAddress,
                                                            std::span<const std::byte> channelUpdateCode, const CodeAt& codeAt);
 

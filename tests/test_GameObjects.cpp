@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <core/GameObjects.h>
+#include <core/PlaylistMessage.h>
 #include <gtest/gtest.h>
 
 namespace
@@ -82,7 +83,7 @@ constexpr game_layout::RendererLayout k_Layout {.framePlanes = {0x80, 0x88, 0x90
                                                 .rendererHeight = 0x90,
                                                 .rendererChannel = 0xA0};
 constexpr game_layout::ChannelLayout k_ChannelLayout {
-    .componentChannel = 0x20, .messageObjectId = 0x28, .channelClipKey = 0xA0};
+    .messageObjectId = 0x30, .messageData = 0x48, .messageSize = 0x50, .channelClipKey = 0xA0};
 
 constexpr std::uintptr_t k_Frame = FakeMemory::k_Base + 0x100;
 constexpr std::uintptr_t k_Planes = FakeMemory::k_Base + 0x400;
@@ -184,22 +185,50 @@ TEST(GameObjects, ReadsTheClipKeyOfAChannel)
 	EXPECT_EQ(*key, (ScreenKey {.instance = 0x8A50833624769271, .type = 0x376840D7, .group = 0}));
 }
 
-TEST(GameObjects, ReadsTheComponentTheMessageAndTheListener)
+TEST(GameObjects, ReadsTheMessageAndTheListener)
 {
 	FakeMemory memory;
-	constexpr auto component = FakeMemory::k_Base + 0x4000;
 	constexpr auto message = FakeMemory::k_Base + 0x4100;
+	constexpr auto bytes = FakeMemory::k_Base + 0x4400;
 	constexpr auto state = FakeMemory::k_Base + 0x4200;
-	memory.Put(component + 0x20, std::uintptr_t {0xABC});
-	memory.Put(message + 0x28, std::uint64_t {0x1234});
+	memory.Put(message + 0x30, std::uint64_t {0x1234});
+	const ScreenKey key {.instance = 0x5D630A58015C3E89, .type = 0x545AC67A, .group = 0x00BF458B};
+	const auto encoded = playlist::MakeMessage(12, std::span(&key, 1));
+	for (std::size_t index = 0; index < encoded.size(); ++index)
+	{
+		memory.Put(bytes + index, encoded[index]);
+	}
+	memory.Put(message + 0x48, bytes);
+	memory.Put(message + 0x50, static_cast<std::int32_t>(encoded.size()));
 	std::array<float, 16> matrix {};
 	matrix[0] = 1.0F;
 	matrix[15] = 1.0F;
 	memory.Put(state + 0x40, matrix);
-	EXPECT_EQ(ReadComponentChannel(memory, component, k_ChannelLayout), 0xABCU);
 	EXPECT_EQ(ReadMessageObjectId(memory, message, k_ChannelLayout), 0x1234U);
+	const auto keys = ReadMessageClipKeys(memory, message, k_ChannelLayout);
+	ASSERT_TRUE(keys) << keys.GetError().message;
+	EXPECT_EQ(*keys, std::vector<ScreenKey> {key});
 	EXPECT_EQ(ReadListenerMatrix(memory, state, 0x40), matrix);
 	EXPECT_FALSE(ReadListenerMatrix(memory, FakeMemory::k_Base + 0xFFF8, 0x40));
+}
+
+TEST(GameObjects, RefusesTheBytesOfAMessageThatTheModCannotRead)
+{
+	FakeMemory memory;
+	constexpr auto message = FakeMemory::k_Base + 0x4100;
+	// A size that is not correct, then bytes outside the memory.
+	memory.Put(message + 0x48, FakeMemory::k_Base + 0x4400);
+	memory.Put(message + 0x50, std::int32_t {-1});
+	EXPECT_FALSE(ReadMessageClipKeys(memory, message, k_ChannelLayout));
+	memory.Put(message + 0x48, std::uintptr_t {0x1000});
+	memory.Put(message + 0x50, std::int32_t {8});
+	EXPECT_FALSE(ReadMessageClipKeys(memory, message, k_ChannelLayout));
+	EXPECT_FALSE(ReadMessageClipKeys(memory, 0, k_ChannelLayout));
+	// No bytes: an empty list.
+	memory.Put(message + 0x50, std::int32_t {0});
+	const auto empty = ReadMessageClipKeys(memory, message, k_ChannelLayout);
+	ASSERT_TRUE(empty);
+	EXPECT_TRUE(empty->empty());
 }
 
 } // namespace

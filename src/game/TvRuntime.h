@@ -76,14 +76,11 @@ public:
 
 	// The hook callbacks.
 
-	/// Before the game applies a list of clips to an object: keep the object id of the message.
+	/// Before the game applies a list of clips to an object: keep the clip keys of the list for the object of the
+	/// message.
 	void OnPlaylistMessage(std::uintptr_t message);
-	/// After the game applied the message.
-	void OnPlaylistMessageDone();
-	/// Before the video component gets its list of clips: link the object of the message to the channel.
-	void OnSetPlaylist(std::uintptr_t component);
-	/// Before the game copies a frame into the textures of the screen: write the newest frame of the video of this
-	/// channel into the planes.
+	/// Before the game copies a frame into the textures of the screen: link the channel to the object that the game
+	/// gave its clip to, and write the newest frame of the video of this channel into the planes.
 	void OnRenderFrame(std::uintptr_t renderer, std::uintptr_t frame);
 	/// After the game put its audio listener at the camera.
 	void OnListener(std::uintptr_t state);
@@ -135,7 +132,6 @@ private:
 	std::optional<std::size_t> _listenerOffset;
 	std::optional<game_layout::VideoSettingsLayout> _videoSettings;
 
-	std::optional<std::uint64_t> _pendingObject;
 	std::optional<AudioPose> _listener;
 	double _speedScale = 1.0;
 	std::set<std::string> _logged;
@@ -147,7 +143,7 @@ private:
 	std::set<std::uintptr_t> _seenChannels;
 	std::uint64_t _matchedCalls = 0;
 	std::uint32_t _playlistMessageLines = 0;
-	std::uint32_t _setPlaylistLines = 0;
+	std::uint32_t _linkLines = 0;
 	std::uint64_t _frontFrame = 0;
 	std::array<double, 3> _meansBefore {};
 	std::array<double, 3> _meansAfter {};

@@ -34,11 +34,15 @@ All in `TS4_x64.exe`. The signatures are in `src/core/VideoLayout.h`; the RVAs a
 
 | Function | Phase | Arguments | What the mod does |
 |---|---|---|---|
-| `VideoRenderer::RenderFrame` | before | 2: renderer, frame | Finds the session of the channel (renderer -> channel), takes the newest frame of the helper, and writes it into the three planes of the frame. Then the original uploads and shows them. |
-| `HandleVideoSetPlaylist` | before | 1: message | Keeps the object id of the message. |
-| `HandleVideoSetPlaylist` | after | 1 | Clears the kept object id. |
-| `VideoComponent::SetPlaylist` | before | 1: component | Links the channel of the component to the kept object id. |
+| `VideoRenderer::RenderFrame` | before | 2: renderer, frame | Links the channel to the object that got its clip (renderer -> channel -> clip key), finds the session of the channel, takes the newest frame of the helper, and writes it into the three planes of the frame. Then the original uploads and shows them. |
+| `HandleVideoSetPlaylist` | before | 1: message | Keeps the object id and the clip keys of the message (it reads the bytes of the message before the game parses them). |
 | `UpdateListenerFromCamera` | after | 1: listener state | Reads the copy of the camera matrix and moves the listener of the 3D audio. |
+
+**The rule of the arguments.** The hook manager of the extender gives the original function only the four register
+arguments. The mod puts a callback only on a function with four or fewer integer or pointer arguments
+(`docs/research/tv/offsets.md`, "The arguments of each hooked function"). `VideoComponent::SetPlaylist` has three more
+arguments on the stack: a hook on it gave random flags to the playlist of every TV, and every TV stayed black (the
+fourth game test). The mod has no hook on it since 2026-10-25.
 
 The mod reads the offsets one time, in `Ts4ModInit`: the extender loads the DLL mods after the exe is decrypted, and
 it puts its hooks on the functions after the inits. A hook changes the first bytes of a function, so a signature
@@ -52,9 +56,12 @@ listener.
 
 See "Which TV" in `docs/research/tv/native.md`. The order of the match in `SessionManager::MatchChannel`:
 
-1. The channel that a playlist message linked to the object of a session. The runtime keeps the link of each object
-   that gets a playlist, also of an object with no session. This is the match that the watch design uses: the watch
-   interaction of the game puts the TV on its channel, and the channel sends a playlist.
+1. The channel that a playlist linked to the object of a session. The runtime keeps the newest list of clip keys of
+   each object that gets a playlist, also of an object with no session. When `RenderFrame` shows a channel with a clip
+   that its object does not have, the channel goes to the object whose newest list has that clip and that no channel
+   showed yet (an object with no channel first, then the newest list; `SessionManager::LinkChannelByClip`). This is
+   the match that the watch design uses: the watch interaction of the game puts the TV on its channel, and the
+   channel sends a playlist.
 2. Else the object whose screen key (from the script mod) is the clip key of the channel. The mod then links that
    channel. The script mod of the watch design does not send a screen key; the bridge keeps the function.
 3. Else the session of "any TV" (object id 0, only from the inspector): it takes the first channel that it sees.
@@ -134,7 +141,9 @@ while the TV plays. Options for the merger and the extender lane:
 
 The DLL mod writes these lines to the log of the extender:
 
-- `frames: the playlist of the object X links the channel C`: a playlist of a TV with a session.
+- `frames: playlist message N for the object X: K clip keys ...`: the first 40 playlist messages, with their keys.
+- `frames: the playlist of the object X links the channel C (clip K)`: a new link (each link of a TV with a session,
+  and the first 40 other links).
 - `frames: the first frame of the channel C`: the first RenderFrame of each channel (at most 64), with the clip key,
   the size of the target, the size of the Y plane, the flip flag and the two flags of the video settings of the game.
 - `frames: mode M, renderCalls ...`: every 5 s while a session runs: the calls, the channels, the calls for a video,
@@ -273,7 +282,7 @@ It returns 0 if all checks pass, 1 if a check fails, 77 if the helper or the aud
 
 1. The extender accepts the five callbacks (one log line each if not), and the log shows "the offsets are read"
    with `renderer`, `channel` and `listener` true.
-2. `RenderFrame`, `HandleVideoSetPlaylist`, `SetPlaylist` and `UpdateListenerFromCamera` run on the main thread
+2. `RenderFrame`, `HandleVideoSetPlaylist` and `UpdateListenerFromCamera` run on the main thread
    (`youtube_tv.status`: `renderCalls` grows while a TV plays a game clip; `listenerKnown` true).
 3. `youtube_tv.play {"url": "M7lc1UVf-VE"}` (any TV) on a TV that is on shows the video on its screen, the right way
    up (the flip flag), with correct colours (else change `matrix` or `range`).

@@ -4,6 +4,8 @@
 
 #include "GameObjects.h"
 
+#include <core/PlaylistMessage.h>
+
 namespace ts4_mod::youtube_tv
 {
 
@@ -104,16 +106,6 @@ std::optional<ScreenKey> ReadChannelClipKey(const MemoryAccess& memory, std::uin
 	return key;
 }
 
-std::uintptr_t ReadComponentChannel(const MemoryAccess& memory, std::uintptr_t component,
-                                    const game_layout::ChannelLayout& layout)
-{
-	if (component == 0)
-	{
-		return 0;
-	}
-	return ReadValue<std::uintptr_t>(memory, component + layout.componentChannel).value_or(0);
-}
-
 std::optional<std::uint64_t> ReadMessageObjectId(const MemoryAccess& memory, std::uintptr_t message,
                                                  const game_layout::ChannelLayout& layout)
 {
@@ -122,6 +114,31 @@ std::optional<std::uint64_t> ReadMessageObjectId(const MemoryAccess& memory, std
 		return std::nullopt;
 	}
 	return ReadValue<std::uint64_t>(memory, message + layout.messageObjectId);
+}
+
+ts4::Result<std::vector<ScreenKey>> ReadMessageClipKeys(const MemoryAccess& memory, std::uintptr_t message,
+                                                        const game_layout::ChannelLayout& layout)
+{
+	if (message == 0)
+	{
+		return ts4::MakeError("the playlist message is not there");
+	}
+	const auto data = ReadValue<std::uintptr_t>(memory, message + layout.messageData);
+	const auto size = ReadValue<std::int32_t>(memory, message + layout.messageSize);
+	if (!data || !size)
+	{
+		return ts4::MakeError("the mod cannot read the bytes of the playlist message");
+	}
+	if (*size < 0 || static_cast<std::size_t>(*size) > playlist::k_MaxMessageBytes)
+	{
+		return ts4::MakeError("the playlist message has a size that is not correct ({})", *size);
+	}
+	std::vector<std::byte> bytes(static_cast<std::size_t>(*size));
+	if (!bytes.empty() && (*data == 0 || !memory.Read(*data, bytes)))
+	{
+		return ts4::MakeError("the mod cannot read the {} bytes of the playlist message", bytes.size());
+	}
+	return playlist::ReadClipKeys(bytes);
 }
 
 std::optional<std::array<float, 16>> ReadListenerMatrix(const MemoryAccess& memory, std::uintptr_t state,

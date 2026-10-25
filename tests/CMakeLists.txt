@@ -1,6 +1,6 @@
 find_package(GTest CONFIG REQUIRED)
 
-add_executable(ts4_youtube_tv_tests test_AudioRing.cpp test_AudioSpace.cpp test_BridgeArgs.cpp test_CodeOffsets.cpp test_FrameWriter.cpp test_GameObjects.cpp test_HostProtocol.cpp test_Sessions.cpp test_ThreadGate.cpp test_YoutubeTvSettings.cpp test_YoutubeUrl.cpp test_Yuv.cpp)
+add_executable(ts4_youtube_tv_tests test_AudioRing.cpp test_AudioSpace.cpp test_BridgeArgs.cpp test_CodeOffsets.cpp test_FrameWriter.cpp test_GameObjects.cpp test_HostProtocol.cpp test_PlaylistMessage.cpp test_Sessions.cpp test_ThreadGate.cpp test_YoutubeTvSettings.cpp test_YoutubeUrl.cpp test_Yuv.cpp)
 target_link_libraries(ts4_youtube_tv_tests PRIVATE ts4_youtube_tv_core GTest::gtest_main)
 ts4_set_warnings(ts4_youtube_tv_tests)
 

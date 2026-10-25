@@ -132,8 +132,16 @@ public:
 	void SetTransform(std::uint64_t objectId, const ObjectTransform& transform);
 	/// Keep the key of the clip that the script mod put on the TV. The mod uses it if it does not know the channel.
 	void SetScreenKey(std::uint64_t objectId, const ScreenKey& key);
-	/// Keep the video channel of an object. The game gave a list of clips to this object, and the mod saw the channel.
+	/// Keep the video channel of an object.
 	void BindChannel(std::uint64_t objectId, std::uintptr_t channel);
+	/// Keep the clip keys of the newest list of clips that the game gave to an object.
+	void NotePlaylist(std::uint64_t objectId, std::vector<ScreenKey> keys);
+	/// Link a channel to an object by the clip that the channel plays now. The rules:
+	/// 1. If the object of the channel has this clip in its newest list (or has an empty list), the link stays.
+	/// 2. Else the channel goes to the object whose newest list has this clip and has no channel that played it yet.
+	///    An object with no channel comes first. Of these, the object with the newest list comes first.
+	/// The result is the object id if the call made a new link.
+	[[nodiscard]] std::optional<std::uint64_t> LinkChannelByClip(std::uintptr_t channel, const ScreenKey& clipKey);
 
 	/// Find the session that shows its video on this channel. `clipKey` is the key of the clip that the channel plays
 	/// now, if the mod could read it. The order:
@@ -164,6 +172,11 @@ private:
 		std::uintptr_t channel = 0;
 		std::optional<ScreenKey> screenKey;
 		std::optional<ObjectTransform> transform;
+		/// The clip keys of the newest list of clips, and the number of that list. The numbers increase.
+		std::vector<ScreenKey> playlist;
+		std::uint64_t playlistNumber = 0;
+		/// The number of the list that a channel of the object played last.
+		std::uint64_t shownNumber = 0;
 	};
 
 	[[nodiscard]] KnownObject& Known(std::uint64_t objectId);
@@ -174,6 +187,7 @@ private:
 	std::vector<Session> _sessions;
 	std::map<std::uint64_t, KnownObject> _objects;
 	std::int32_t _nextHelperId = 1;
+	std::uint64_t _nextPlaylistNumber = 1;
 	ClockSpeedMode _mode = ClockSpeedMode::Normal;
 	bool _superSpeed = false;
 };

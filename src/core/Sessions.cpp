@@ -204,6 +204,63 @@ void SessionManager::BindChannel(std::uint64_t objectId, std::uintptr_t channel)
 	Known(objectId).channel = channel;
 }
 
+void SessionManager::NotePlaylist(std::uint64_t objectId, std::vector<ScreenKey> keys)
+{
+	auto& known = Known(objectId);
+	known.playlist = std::move(keys);
+	known.playlistNumber = _nextPlaylistNumber++;
+}
+
+std::optional<std::uint64_t> SessionManager::LinkChannelByClip(std::uintptr_t channel, const ScreenKey& clipKey)
+{
+	if (channel == 0)
+	{
+		return std::nullopt;
+	}
+	const auto hasClip = [&clipKey](const KnownObject& known) {
+		return std::ranges::find(known.playlist, clipKey) != known.playlist.end();
+	};
+	for (auto& [id, known] : _objects)
+	{
+		if (known.channel != channel)
+		{
+			continue;
+		}
+		if (known.playlist.empty() || hasClip(known))
+		{
+			known.shownNumber = known.playlistNumber;
+			return std::nullopt;
+		}
+		break;
+	}
+	// The object of the channel does not have this clip: find the object that the game gave this clip to.
+	std::optional<std::uint64_t> best;
+	const KnownObject* bestKnown = nullptr;
+	for (const auto& [id, known] : _objects)
+	{
+		if (known.channel == channel || known.playlistNumber <= known.shownNumber || !hasClip(known))
+		{
+			continue;
+		}
+		const bool better =
+		    bestKnown == nullptr || (known.channel == 0 && bestKnown->channel != 0) ||
+		    ((known.channel == 0) == (bestKnown->channel == 0) && known.playlistNumber > bestKnown->playlistNumber);
+		if (better)
+		{
+			best = id;
+			bestKnown = &known;
+		}
+	}
+	if (!best)
+	{
+		return std::nullopt;
+	}
+	BindChannel(*best, channel);
+	auto& linked = _objects[*best];
+	linked.shownNumber = linked.playlistNumber;
+	return best;
+}
+
 Session* SessionManager::MatchChannel(std::uintptr_t channel, const std::optional<ScreenKey>& clipKey)
 {
 	if (channel == 0)

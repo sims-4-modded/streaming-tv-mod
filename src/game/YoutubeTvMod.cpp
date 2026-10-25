@@ -217,8 +217,7 @@ void YoutubeTvMod::EnsureLayouts()
 	const auto messageCode =
 	    window("PlaylistMessage", layout::k_PlaylistMessageSignature.text, layout::k_PlaylistMessageWindow);
 	auto channel = layout::ReadChannelLayout(
-	    window("SetPlaylist", layout::k_SetPlaylistSignature.text, layout::k_SetPlaylistWindow), messageCode,
-	    reinterpret_cast<std::uintptr_t>(messageCode.data()),
+	    messageCode, reinterpret_cast<std::uintptr_t>(messageCode.data()),
 	    window("ChannelUpdate", layout::k_ChannelUpdateSignature.text, layout::k_ChannelUpdateWindow), codeAt);
 	if (channel)
 	{
@@ -242,6 +241,9 @@ void YoutubeTvMod::EnsureLayouts()
 
 void YoutubeTvMod::RegisterCallbacks()
 {
+	// The extender gives only the four register arguments to the original function. Thus the mod puts a callback
+	// only on a function that has four or fewer arguments, and no floating-point argument. The function that gives
+	// the list of clips to the video component has more arguments: the mod does not put a callback on it.
 	namespace layout = game_layout;
 	const auto add = [this](const sdk::FunctionRef& function, Ts4HookPhase phase, std::string_view name,
 	                        std::function<void(const Ts4Call&)> callback) {
@@ -255,17 +257,10 @@ void YoutubeTvMod::RegisterCallbacks()
 		    EnsureLayouts();
 		    _runtime->OnRenderFrame(call.arguments[0], call.arguments[1]);
 	    });
-	add(GameFunction("HandleVideoSetPlaylist", layout::k_PlaylistMessageSignature, 1), TS4_HOOK_BEFORE, "readObject",
+	add(GameFunction("HandleVideoSetPlaylist", layout::k_PlaylistMessageSignature, 1), TS4_HOOK_BEFORE, "readPlaylist",
 	    [this](const Ts4Call& call) {
 		    EnsureLayouts();
 		    _runtime->OnPlaylistMessage(call.arguments[0]);
-	    });
-	add(GameFunction("HandleVideoSetPlaylist", layout::k_PlaylistMessageSignature, 1), TS4_HOOK_AFTER, "forgetObject",
-	    [this](const Ts4Call&) { _runtime->OnPlaylistMessageDone(); });
-	add(GameFunction("VideoComponent::SetPlaylist", layout::k_SetPlaylistSignature, 1), TS4_HOOK_BEFORE, "readChannel",
-	    [this](const Ts4Call& call) {
-		    EnsureLayouts();
-		    _runtime->OnSetPlaylist(call.arguments[0]);
 	    });
 	add(GameFunction("UpdateListenerFromCamera", layout::k_ListenerSignature, 1), TS4_HOOK_AFTER, "readListener",
 	    [this](const Ts4Call& call) {

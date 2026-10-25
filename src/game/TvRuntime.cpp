@@ -22,6 +22,12 @@ constexpr std::size_t k_MaxSeenChannels = 64;
 /// The diagnostic lines of the playlist callbacks name only this count of calls of each callback.
 constexpr std::uint32_t k_MaxPlaylistLines = 40;
 
+/// The text of a clip key: the instance, the type and the group.
+std::string ClipKeyText(const ScreenKey& key)
+{
+	return std::format("{:016x}:{:08x}:{:08x}", key.instance, key.type, key.group);
+}
+
 /// The audio ring of one video as the source of a voice. Only the thread of the audio reads it.
 class RingSource final: public PcmSource
 {
@@ -382,50 +388,35 @@ void TvRuntime::SetListenerPoseLocked(const AudioPose& pose)
 void TvRuntime::OnPlaylistMessage(std::uintptr_t message)
 {
 	const std::lock_guard lock(_mutex);
-	_pendingObject.reset();
-	if (_channel)
-	{
-		_pendingObject = ReadMessageObjectId(*_memory, message, *_channel);
-	}
-	if (_playlistMessageLines < k_MaxPlaylistLines)
-	{
-		++_playlistMessageLines;
-		Log(TS4_LOG_INFO, std::format("frames: playlist message {} for the object {}", _playlistMessageLines,
-		                              _pendingObject ? std::format("{:#x}", *_pendingObject) : std::string("unknown")));
-	}
-}
-
-void TvRuntime::OnPlaylistMessageDone()
-{
-	const std::lock_guard lock(_mutex);
-	_pendingObject.reset();
-}
-
-void TvRuntime::OnSetPlaylist(std::uintptr_t component)
-{
-	const std::lock_guard lock(_mutex);
-	if (_setPlaylistLines < k_MaxPlaylistLines && _channel)
-	{
-		++_setPlaylistLines;
-		Log(TS4_LOG_INFO, std::format("frames: set playlist {}: component {:#x}, channel {:#x}, object {}", _setPlaylistLines,
-		                              component, ReadComponentChannel(*_memory, component, *_channel),
-		                              _pendingObject ? std::format("{:#x}", *_pendingObject) : std::string("none")));
-	}
-	if (!_channel || !_pendingObject)
+	if (!_channel)
 	{
 		return;
 	}
-	const auto channel = ReadComponentChannel(*_memory, component, *_channel);
-	if (channel != 0)
+	const auto objectId = ReadMessageObjectId(*_memory, message, *_channel);
+	auto keys = ReadMessageClipKeys(*_memory, message, *_channel);
+	if (_playlistMessageLines < k_MaxPlaylistLines)
 	{
-		_sessions.BindChannel(*_pendingObject, channel);
+		++_playlistMessageLines;
+		std::string keysText;
+		if (!keys)
+		{
+			keysText = "clip keys not known: " + keys.GetError().message;
+		}
+		else
+		{
+			keysText = std::format("{} clip keys", keys->size());
+			for (const auto& key : *keys)
+			{
+				keysText += " " + ClipKeyText(key);
+			}
+		}
+		Log(TS4_LOG_INFO, std::format("frames: playlist message {} for the object {}: {}", _playlistMessageLines,
+		                              objectId ? std::format("{:#x}", *objectId) : std::string("unknown"), keysText));
 	}
-	if (_sessions.Find(*_pendingObject) != nullptr)
+	if (objectId && keys)
 	{
-		Log(TS4_LOG_INFO,
-		    std::format("frames: the playlist of the object {:#x} links the channel {:#x}", *_pendingObject, channel));
+		_sessions.NotePlaylist(*objectId, std::move(*keys));
 	}
-	_pendingObject.reset();
 }
 
 void TvRuntime::OnRenderFrame(std::uintptr_t renderer, std::uintptr_t frame)
@@ -456,13 +447,23 @@ void TvRuntime::OnRenderFrame(std::uintptr_t renderer, std::uintptr_t frame)
 		{
 			clipKey = ReadChannelClipKey(*_memory, channel, *_channel);
 		}
+		if (clipKey)
+		{
+			if (const auto linked = _sessions.LinkChannelByClip(channel, *clipKey))
+			{
+				if (_linkLines < k_MaxPlaylistLines || _sessions.Find(*linked) != nullptr)
+				{
+					++_linkLines;
+					Log(TS4_LOG_INFO, std::format("frames: the playlist of the object {:#x} links the channel {:#x} (clip {})",
+					                              *linked, channel, ClipKeyText(*clipKey)));
+				}
+			}
+		}
 		if (channel != 0 && _seenChannels.size() < k_MaxSeenChannels && _seenChannels.insert(channel).second)
 		{
 			const auto size = ReadRendererSize(*_memory, renderer, *_renderer);
 			const auto target = ReadGameFrame(*_memory, frame, *_renderer);
-			const auto clipText = clipKey
-			                          ? std::format("{:016x}:{:08x}:{:08x}", clipKey->instance, clipKey->type, clipKey->group)
-			                          : std::string("none");
+			const auto clipText = clipKey ? ClipKeyText(*clipKey) : std::string("none");
 			const auto sizeText = size ? std::format("{}x{}", (*size)[0], (*size)[1]) : std::string("unknown");
 			const auto planeText =
 			    target ? std::format("{}x{}", target->planes[0].width, target->planes[0].height) : std::string("not correct");

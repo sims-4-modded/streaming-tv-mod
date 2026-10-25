@@ -84,14 +84,21 @@ ts4::Result<RendererLayout> ReadRendererLayout(std::span<const std::byte> render
 	return layout;
 }
 
-ts4::Result<ChannelLayout> ReadChannelLayout(std::span<const std::byte> setPlaylistCode, std::span<const std::byte> messageCode,
-                                             std::uintptr_t messageCodeAddress, std::span<const std::byte> channelUpdateCode,
-                                             const CodeAt& codeAt)
+ts4::Result<ChannelLayout> ReadChannelLayout(std::span<const std::byte> messageCode, std::uintptr_t messageCodeAddress,
+                                             std::span<const std::byte> channelUpdateCode, const CodeAt& codeAt)
 {
 	ChannelLayout layout;
-	if (auto error = Read(setPlaylistCode, k_ComponentChannel, layout.componentChannel))
+	if (auto error = Read(messageCode, k_MessageData, layout.messageData))
 	{
 		return *error;
+	}
+	if (auto error = Read(messageCode, k_MessageSize, layout.messageSize))
+	{
+		return *error;
+	}
+	if (layout.messageData == layout.messageSize)
+	{
+		return ts4::MakeError("the pointer and the size of the bytes of a message have the same offset");
 	}
 	std::size_t objectKey = 0;
 	if (auto error = Read(messageCode, k_MessageObjectId, objectKey))

@@ -77,7 +77,7 @@ All signatures were made with `ghcat.py sig` and are unique in the exe image of 
 |---|---|---|---|---|
 | **Main: replace the frames of one screen** | `VideoRenderer::RenderFrame` | `0x017C7280` | RCX renderer, RDX frame. No floats. | `48 8B C4 57 41 54 41 55 41 56 41 57 48 81 EC C0 00 00 00 48 C7 40 80 FE FF FF FF` |
 | Same, one level up | `VideoRenderer::vfunc_16` | `0x017C7240` | RCX renderer, RDX frame | `48 89 5C 24 08 57 48 83 EC 20 48 8B FA 48 8B D9 E8 ?? ?? ?? ?? 48 8B 4B 60` |
-| Know which component plays which clip | `VideoComponent::SetPlaylist` | `0x017C3210` | RCX component, DX version, R8 clip keys, R9D count (3 more bytes on the stack: final_loop, video_overlay, append_clip) | `48 89 5C 24 10 48 89 6C 24 18 56 57 41 57 48 83 EC 30 48 8B D9` |
+| Know which component plays which clip (**not for the hook manager: 7 arguments**) | `VideoComponent::SetPlaylist` | `0x017C3210` | RCX component, DX version, R8 clip keys, R9D count (3 more bytes on the stack: final_loop, video_overlay, append_clip; `offsets.md`) | `48 89 5C 24 10 48 89 6C 24 18 56 57 41 57 48 83 EC 30 48 8B D9` |
 | Op handler (object id at op +0x28) | `HandleVideoSetPlaylist` | `0x00227300` | RCX op | `40 55 56 57 48 8D 6C 24 B9 48 81 EC D0 00 00 00 48 C7 45 37 FE FF FF FF` |
 | Clock speed of each channel | `VideoChannel::Update` | `0x017C4C30` | RCX channel, EDX clock speed | `48 89 5C 24 10 48 89 74 24 18 55 57 41 56 48 8D 6C 24 B9 48 81 EC B0 00 00 00 48 8B D9` |
 | Present path | `VideoChannel::PresentFrame` | `0x017C45C0` | RCX channel | `40 53 48 83 EC 20 48 8B D9 48 8B 49 20 48 85 C9 74 32` |
@@ -191,7 +191,13 @@ Lane `tv-dll`, 2026-10-25 (catalogue entries `0x00227300`, `0x017C3210`, `0x017C
   VideoComponent (buckets at manager +0x10, count at +0x18, node `{u32 id; +0x8 component; +0x10 next}`), and
   component +0x8 is the client object. A mod would need the instance of the manager and the object id field of the
   client object. Not used.
-- **The link that the mod uses:** `HandleVideoSetPlaylist` (`0x00227300`) reads the object id (op +0x28) and calls
+- **The link that the mod uses since 2026-10-25 (lane `mods/no-setplaylist-hook`):** the clip. A before-callback on
+  `HandleVideoSetPlaylist` reads the object id (op +0x30) and the clip keys from the serialized message (op +0x48
+  pointer, op +0x50 size), and the `RenderFrame` callback gives a channel to the object whose newest list has the clip
+  of the channel (channel +0xA0). See `offsets.md`, "The arguments of each hooked function". The old link below
+  needed a hook on `SetPlaylist`, which has stack arguments that the hook manager of `common` does not give to the
+  original; that hook made every TV black.
+- **The old link (removed):** `HandleVideoSetPlaylist` (`0x00227300`) reads the object id (op +0x28) and calls
   `VideoComponent::SetPlaylist` (`0x017C3210`) with the component of that object. Component +0x20 is the channel, the
   same pointer as renderer +0xA0 in `RenderFrame`. So:
   1. A before-callback on `HandleVideoSetPlaylist` (1 argument) keeps the object id of the message.
