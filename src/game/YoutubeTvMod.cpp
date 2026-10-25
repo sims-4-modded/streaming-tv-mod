@@ -74,6 +74,9 @@ ts4::Result<std::unique_ptr<YoutubeTvMod>> YoutubeTvMod::Start(std::unique_ptr<s
 	{
 		self._host->Warn("the extender refused the status reader");
 	}
+	// The extender puts its hooks on the functions after the inits. A hook changes the first bytes of a function,
+	// and then the signatures do not match. Thus the mod reads the offsets now.
+	self.EnsureLayouts();
 	self._host->Info("start on the game version {}", ToString(self._host->Version()));
 	return mod;
 }

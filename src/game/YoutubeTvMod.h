@@ -44,8 +44,8 @@ private:
 
 	void RegisterCallbacks();
 	void RegisterQueries();
-	/// Read the offsets from the code of the game, one time. The exe of the game is decrypted when the first callback
-	/// runs, so the callbacks call it.
+	/// Read the offsets from the code of the game, one time. The mod calls it in `Ts4ModInit`, before the extender
+	/// puts its hooks on the functions. If the exe is not decrypted yet, the callbacks call it again.
 	void EnsureLayouts();
 
 	std::unique_ptr<sdk::ModHost> _host;
