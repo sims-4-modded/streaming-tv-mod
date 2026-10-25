@@ -50,9 +50,10 @@ def run_play(url_parts, connection):
     if target is None:
         _output("There is no TV that works on this lot.", connection)
         return False
-    ok, error = session.start(target, url)
+    ok, error = session.start(target, url, _active_sim())
     if ok:
-        _output("The video starts on the TV {} ({}).".format(target.id, type(target).__name__), connection)
+        _output("The active Sim watches the video on the TV {} ({}).".format(target.id, type(target).__name__),
+                connection)
     else:
         _output("The video did not start: {}".format(error), connection)
     return ok
@@ -74,9 +75,8 @@ def run_status(connection):
         _output("Bridge: ready, API version {}.".format(native.api_version()), connection)
     else:
         _output("Bridge: off: {}".format(native.reason()), connection)
-    instance, resource_type, group = tv.clip_key(tv.screen_clip_name())
-    _output("Settings: enabled={}, screen_clip={} (key {:08X}:{:08X}:{:016X}).".format(
-        settings.get("enabled"), tv.screen_clip_name(), resource_type, group, instance), connection)
+    _output("Settings: enabled={}, watch_affordances={}.".format(
+        settings.get("enabled"), ", ".join(settings.get("watch_affordances"))), connection)
     sessions = session.sessions()
     _output("Sessions: {}.".format(len(sessions)), connection)
     for object_id, item in sessions.items():
@@ -88,6 +88,14 @@ def run_status(connection):
     if dll_status:
         _output("DLL: {}".format(dll_status), connection)
     return True
+
+
+def _key_text(key):
+    """Return type:group:instance of a resource key (a protobuf ResourceKey or a key of sims4.resources)."""
+    try:
+        return "{:08X}:{:08X}:{:016X}".format(int(key.type), int(key.group), int(key.instance))
+    except Exception:  # noqa: BLE001
+        return repr(key)
 
 
 def run_info(connection):
@@ -103,7 +111,7 @@ def run_info(connection):
     playlist = getattr(target, "video_playlist", None)
     _output("  video_playlist = {}".format("None" if playlist is None else str(playlist)), connection)
     for key in getattr(playlist, "clip_keys", None) or ():
-        _output("    clip {!r}".format(key), connection)
+        _output("    clip {}".format(_key_text(key)), connection)
     _output("  session = {}".format(session.has_session(target.id)), connection)
     return True
 

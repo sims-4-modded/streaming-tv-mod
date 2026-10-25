@@ -29,6 +29,18 @@ INSTANCE_ID = fnv.fnv1_64(TUNING_NAME)
 DISPLAY_NAME = "Watch a YouTube video"
 
 
+def _watcher(owner):
+    """Return the Sim that watches: the active Sim, else the Sim that ran the interaction."""
+    try:
+        import services
+        active = services.get_active_sim()
+        if active is not None:
+            return active
+    except Exception:  # noqa: BLE001
+        log.exception("interaction: the active Sim is not known")
+    return owner
+
+
 def on_url(target, owner, text):
     """Check the URL from the dialog and start the video, or show the error."""
     try:
@@ -39,7 +51,7 @@ def on_url(target, owner, text):
             log.write("interaction: the URL is not correct: {}".format(error))
             dialogs.show_error(owner, "This is not the URL of a YouTube video: {}".format(error))
             return False
-        ok, error = session.start(target, url)
+        ok, error = session.start(target, url, _watcher(owner))
         if not ok:
             dialogs.show_error(owner, "The video did not start: {}".format(error))
         return ok

@@ -9,8 +9,8 @@ mod writes one log line for each incorrect field.
 
 The fields:
 
-- screen_clip: the name of the game clip that the mod puts on the TV with set_video_clips. The DLL mod finds the TV
-  from this clip and shows the frames of the video in place of the frames of the clip.
+- watch_affordances: the names of the watch interactions of the game, in the order that the mod tries them when the
+  Sim starts to watch a video (watch.py). If no name matches, the mod takes the first watch interaction of the TV.
 - enabled: set it to false to hide the interaction and stop the cheat command play.
 """
 
@@ -21,16 +21,16 @@ from . import log
 
 FILE_NAME = "youtube_tv_script.json"
 
-# The Yule log clip of the game. It is in the base game (ClientFullBuild1.package), and TVs show it only on the
-# holiday channel. Thus another TV on the lot almost never shows the same clip, and the DLL mod finds the correct TV.
-DEFAULT_SCREEN_CLIP = "TS4_TV_Yulelog"
+# Watch interactions of the base game TVs. The news channel gives no strong buff, so it is the first choice.
+DEFAULT_WATCH_AFFORDANCES = ("tv_WatchNews", "tv_WatchAction", "tv_WatchMusic")
+MAX_WATCH_AFFORDANCES = 16
 
 DEFAULTS = {
-    "screen_clip": DEFAULT_SCREEN_CLIP,
+    "watch_affordances": DEFAULT_WATCH_AFFORDANCES,
     "enabled": True,
 }
 
-_CLIP_CHARACTERS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
+_NAME_CHARACTERS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
 
 _values = dict(DEFAULTS)
 
@@ -43,9 +43,18 @@ def default_path():
     return os.path.join(local, "Sims4Mods", FILE_NAME)
 
 
-def is_clip_name(text):
-    """Return True if the text is a correct clip name: 1 to 128 letters, digits, _ and -."""
-    return isinstance(text, str) and 0 < len(text) <= 128 and all(c in _CLIP_CHARACTERS for c in text)
+def is_tuning_name(text):
+    """Return True if the text is a correct tuning name: 1 to 128 letters, digits, _ and -."""
+    return isinstance(text, str) and 0 < len(text) <= 128 and all(c in _NAME_CHARACTERS for c in text)
+
+
+def _parse_names(value):
+    """Return the tuple of names, or None if the value is not a list of 1 to 16 correct names."""
+    if not isinstance(value, list) or not 0 < len(value) <= MAX_WATCH_AFFORDANCES:
+        return None
+    if not all(is_tuning_name(name) for name in value):
+        return None
+    return tuple(value)
 
 
 def parse(data):
@@ -54,12 +63,13 @@ def parse(data):
     if not isinstance(data, dict):
         log.write("settings: the file does not hold a JSON object; the mod uses the defaults")
         return values
-    clip = data.get("screen_clip", DEFAULT_SCREEN_CLIP)
-    if is_clip_name(clip):
-        values["screen_clip"] = clip
-    else:
-        log.write("settings: screen_clip {!r} is not a correct clip name; the mod uses {}".format(
-            clip, DEFAULT_SCREEN_CLIP))
+    if "watch_affordances" in data:
+        names = _parse_names(data["watch_affordances"])
+        if names is not None:
+            values["watch_affordances"] = names
+        else:
+            log.write("settings: watch_affordances {!r} is not a list of 1 to {} tuning names; the mod uses {}".format(
+                data["watch_affordances"], MAX_WATCH_AFFORDANCES, list(DEFAULT_WATCH_AFFORDANCES)))
     enabled = data.get("enabled", True)
     if isinstance(enabled, bool):
         values["enabled"] = enabled

@@ -31,7 +31,9 @@ os.environ["LOCALAPPDATA"] = TEMP
 import services  # noqa: E402 - the fake module, after the change of sys.path.
 import tag  # noqa: E402
 from objects.components import types  # noqa: E402
+from objects.components.state import StateComponentManagedDistributables  # noqa: E402
 from objects.components.video import VideoComponent  # noqa: E402
+from objects.electronics.television import WatchSuperInteraction  # noqa: E402
 
 import ts4_youtube_tv  # noqa: E402,F401 - the import starts the mod with the fakes.
 from ts4_youtube_tv import native  # noqa: E402
@@ -44,9 +46,48 @@ class Vector:
         self.x, self.y, self.z, self.w = x, y, z, w
 
 
+class tv_WatchNews(WatchSuperInteraction):  # noqa: N801 - the name of the tuning of the game.
+    pass
+
+
+class tv_WatchAction(WatchSuperInteraction):  # noqa: N801
+    pass
+
+
+class tv_WatchFireplace(WatchSuperInteraction):  # noqa: N801
+    pass
+
+
+class tv_ChannelSurf:  # noqa: N801 - not a watch interaction.
+    pass
+
+
+class FakeSound:
+    """A started client state change of the sound of a channel."""
+
+    def __init__(self, target):
+        self.target = target
+        self.playing = False
+        self.starts = 0
+        self.stops = 0
+
+    def start(self):
+        self.playing = True
+        self.starts += 1
+
+    def stop(self, immediate=False):
+        self.playing = False
+        self.stops += 1
+
+
+class FakeState:
+    overridden_by = None
+
+
 class FakeStateComponent:
     def __init__(self, usable=True):
         self.usable = usable
+        self._custom_distributables = StateComponentManagedDistributables()
 
     def is_object_usable(self):
         return self.usable
@@ -57,7 +98,8 @@ class FakeObject:
 
     _next_id = 100
 
-    def __init__(self, tags=(tag.Tag.Func_TV,), video=True, usable=True, position=(1.0, 2.0, 3.0)):
+    def __init__(self, tags=(tag.Tag.Func_TV,), video=True, usable=True, position=(1.0, 2.0, 3.0),
+                 affordances=(tv_ChannelSurf, tv_WatchAction, tv_WatchNews)):
         FakeObject._next_id += 1
         self.id = FakeObject._next_id
         self.is_sim = False
@@ -68,6 +110,16 @@ class FakeObject:
         self.state_component = FakeStateComponent(usable)
         self.location_callbacks = []
         self._components = {types.VIDEO_COMPONENT: VideoComponent(self)} if video else {}
+        self.affordances = list(affordances)
+
+    def super_affordances(self, context=None):
+        return iter(self.affordances)
+
+    def set_channel_sound(self, state=None):
+        """Apply the sound of a channel through the managed distributables, as the game does."""
+        managed = self.state_component._custom_distributables
+        managed.apply(self, "audio_state", state or FakeState, None, FakeSound)
+        return managed._distributables_map[("audio_state", state or FakeState)]
 
     def has_tag(self, value):
         return value in self._tags
@@ -85,6 +137,64 @@ class FakeObject:
         self.position = Vector(x, y, z)
         for callback in list(self.location_callbacks):
             callback(self, None, None)
+
+
+class FakeInteraction:
+    """A running interaction with finishing callbacks."""
+
+    def __init__(self, affordance, target):
+        self.affordance = affordance
+        self.target = target
+        self.is_finishing = False
+        self.callbacks = []
+        self.cancels = []
+
+    def register_on_finishing_callback(self, callback):
+        self.callbacks.append(callback)
+
+    def unregister_on_finishing_callback(self, callback):
+        if callback in self.callbacks:
+            self.callbacks.remove(callback)
+
+    def finish(self):
+        self.is_finishing = True
+        for callback in list(self.callbacks):
+            callback(self)
+
+    def cancel(self, finishing_type, cancel_reason_msg=None):
+        self.cancels.append((finishing_type, cancel_reason_msg))
+        self.finish()
+
+
+class FakeEnqueueResult:
+    def __init__(self, interaction):
+        self.interaction = interaction
+
+    def __bool__(self):
+        return self.interaction is not None
+
+
+class FakeSim:
+    """A Sim that records the pushed interactions."""
+
+    _next_id = 900
+
+    def __init__(self, accepts=True, position=(0.0, 0.0, 0.0)):
+        FakeSim._next_id += 1
+        self.id = FakeSim._next_id
+        self.is_sim = True
+        self.position = Vector(*position)
+        self.accepts = accepts
+        self.pushed = []
+        self.interactions = []
+
+    def push_super_affordance(self, affordance, target, context, **kwargs):
+        self.pushed.append((affordance, target, context))
+        if not self.accepts:
+            return FakeEnqueueResult(None)
+        interaction = FakeInteraction(affordance, target)
+        self.interactions.append(interaction)
+        return FakeEnqueueResult(interaction)
 
 
 class FakeObjectManager:

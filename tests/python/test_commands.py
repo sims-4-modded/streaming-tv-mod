@@ -24,7 +24,7 @@ class CommandTest(unittest.TestCase):
         self.near = support.FakeObject(position=(1.0, 0.0, 1.0))
         self.far = support.FakeObject(position=(50.0, 0.0, 50.0))
         self.broken = support.FakeObject(position=(0.0, 0.0, 0.0), usable=False)
-        self.sim = support.FakeObject(tags=(), video=False, position=(0.0, 0.0, 0.0))
+        self.sim = support.FakeSim()
         support.reset_game([self.far, self.near, self.broken], active_sim=self.sim)
         self.dll = support.use_dll(support.FakeDll())
         sims4.commands.outputs.clear()
@@ -41,6 +41,10 @@ class CommandTest(unittest.TestCase):
         self.assertTrue(command("youtube_tv.play")(URL, _connection=1))
         self.assertTrue(session.has_session(self.near.id))
         self.assertEqual(self.dll.YoutubeTvPlay.calls[0][1], URL.encode("utf-8"))
+        # The active Sim watches the TV.
+        affordance, target, _ = self.sim.pushed[0]
+        self.assertIs(target, self.near)
+        self.assertIs(affordance, support.tv_WatchNews)
 
     def test_play_refuses_an_incorrect_url(self):
         self.assertFalse(command("youtube_tv.play")("https://example.com", _connection=1))
@@ -65,8 +69,7 @@ class CommandTest(unittest.TestCase):
         self.assertTrue(command("youtube_tv.status")(_connection=1))
         text = "\n".join(sims4.commands.outputs)
         self.assertIn("API version 1", text)
-        self.assertIn("TS4_TV_Yulelog", text)
-        self.assertIn("376840D7:00000000:0D432B7F5C14E35D", text)
+        self.assertIn("watch_affordances=tv_WatchNews, tv_WatchAction, tv_WatchMusic", text)
         self.assertTrue(command("youtube_tv.info")(_connection=1))
         text = "\n".join(sims4.commands.outputs)
         self.assertIn("mute_speed = 3", text)

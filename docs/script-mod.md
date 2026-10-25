@@ -22,12 +22,14 @@ The sources are in `python/ts4_youtube_tv` and `tuning`. The research of the gam
 | `native.py` | The bridge to `youtube_tv.dll`. The game Python has no `ctypes`, so it first imports the Python module `ts4_youtube_tv_native` that the DLL adds to `sys.modules` (`design.md`). If that module is not there, it uses `ctypes` (if the game has it): it gets the handle of the DLL that the extender loaded (`GetModuleHandleW`), does not load a second copy, and gives each function its types. It checks the API version 1. If the bridge cannot start, it is off with one log line, and the next call tries again. Only this module knows the interface. |
 | `urls.py` | The check of the URL of a YouTube video. It has the same rules as `src/core/YoutubeUrl.cpp`, and its tests use the same examples. |
 | `fnv.py` | The FNV-1 64 and FNV-1 32 hashes. The game makes the instance of a clip key from the FNV-1 64 of the clip name in lower case. |
-| `tv.py` | The test for a TV (the tag `Func_TV` or `Func_Television`, and a Video component), the broken test (`state_component.is_object_usable()`), the transform, the nearest TV and the screen clip key. |
+| `tv.py` | The test for a TV (the tag `Func_TV` or `Func_Television`, and a Video component), the broken test (`state_component.is_object_usable()`), the transform, the nearest TV and the key of a clip. |
+| `watch.py` | Finds the watch interaction of the game on the TV (a subclass of `WatchSuperInteraction`) and pushes it on the Sim. |
+| `channel_audio.py` | Silences the sound of the game channel on a TV that shows a video of the mod. |
 | `interaction.py` | `WatchYoutubeVideoInteraction`, a subclass of `ImmediateSuperInteraction`. Its test passes only for a TV that is not broken, when the bridge is ready and the mod is on. It shows the URL dialog. |
 | `dialogs.py` | The URL dialog (`UiDialogTextInputOkCancel` from its factory default) and the error notification (`UiDialogNotification`). All texts are raw text. |
 | `injection.py` | Adds the interaction to each object tuning class with a Video component, when the OBJECT instance manager completes its load. |
 | `clock.py` | Sends the speed of the game to the DLL mod. |
-| `session.py` | One session for each TV that shows a video. It starts and stops the sessions. |
+| `session.py` | One session for each TV that shows a video, as long as the watch interaction of the Sim runs. It starts and stops the sessions. |
 | `commands.py` | The cheat commands. |
 | `settings.py` | The settings file. |
 | `log.py` | The log file. |
@@ -41,11 +43,17 @@ of the game.
 2. The player selects "Watch a YouTube video". The dialog shows a text box for 200 characters, with OK and Cancel.
 3. Cancel: nothing occurs.
 4. OK with a text that is not the URL of a YouTube video: a notification shows the error.
-5. OK with a correct URL: the mod calls `set_video_clips([screen clip], loop_last=True)` on the Video component of
-   the TV. Then it calls `YoutubeTvSetScreenKey` with the key of the screen clip, and `YoutubeTvPlay` with the object
-   id of the TV, the URL, the position and the orientation (a quaternion).
-6. If the DLL mod refuses the video, the mod clears the playlist of the TV and a notification shows the error of the
-   DLL mod (`YoutubeTvLastError`).
+5. OK with a correct URL: the mod pushes the watch interaction of the game on the active Sim (else on the Sim that
+   ran the interaction), with the TV as the target (`watch.py`). Then it calls `YoutubeTvPlay` with the object id of
+   the TV, the URL, the position and the orientation (a quaternion), and it silences the sound of the channel on that
+   TV (`channel_audio.py`).
+6. The Sim goes to the TV, the watch interaction puts the TV on its channel, and the Sim sits or stands and watches.
+   The channel sets the playlist of the TV. The DLL mod links the channel to the object id of the TV (the playlist
+   message), and it shows the frames of the video in place of the frames of the channel.
+7. The video stops when the watch interaction ends: the Sim stops watching, the player cancels the interaction, the
+   player picks another channel (the game cancels the watch on a change of the channel), or the TV turns off.
+8. If the Sim cannot watch the TV, or the DLL mod refuses the video, a notification shows the error. If the DLL mod
+   refuses the video, the mod cancels the watch interaction.
 
 The mod gives the URL to the DLL mod as the player typed it, without the spaces at the start and at the end.
 
@@ -56,12 +64,16 @@ Each wrap keeps the original function and calls it. A second install does not wr
 | Game function | What the mod does |
 |---|---|
 | `clock.GameClock._sync_clock_and_broadcast_gameclock` | Calls the original first. Then it sends `(mode, scale, super_speed)` to `YoutubeTvSetSpeed`. |
-| `objects.components.video.VideoComponent.set_video_clips` | Calls the original first. Then, if the call did not come from the mod and the TV has a session, the session stops. This occurs when the TV goes off, the channel changes or the TV breaks. |
+| `objects.components.video.VideoComponent.set_video_clips` | Calls the original first. While the watch interaction of the session runs, a playlist does not stop the session (the channel of the watch sets it). If the TV has a session and its watch interaction does not run, the session stops. |
 | `objects.components.video.VideoComponent.add_video_clips` | The same as `set_video_clips`. |
 | `objects.components.video.VideoComponent.on_remove` | Stops the session of the TV, then calls the original. This occurs when the player sells or removes the TV. |
 | `zone.Zone.on_teardown` | Stops all sessions (`YoutubeTvStopAll`), then calls the original. This is the zone unload: `Zone.on_teardown` calls `on_zone_unload` of each service, and the objects of the zone still exist at that time. |
 | The OBJECT instance manager: `add_on_load_complete` | Registers the injection. |
 | `GameObject.register_on_location_changed` | The mod registers a callback for each TV with a session. When the TV moves, the callback sends the new transform (`YoutubeTvSetTransform`). |
+| `Sim.push_super_affordance` | Pushes the watch interaction (`InteractionContext` with `SOURCE_SCRIPT_WITH_USER_INTENT`, `Priority.High`). |
+| `Interaction.register_on_finishing_callback` | The end of the watch interaction stops the session. |
+| `Interaction.cancel` | `youtube_tv.stop` and a refusal of the DLL mod cancel the watch interaction (`FinishingType.USER_CANCEL`). |
+| `objects.components.state.StateComponentManagedDistributables.apply` | Calls the original first. Then, if the change is `audio_state` and the target is a TV that shows a video of the mod, the mod stops the new sound. |
 
 The speed values:
 
@@ -72,8 +84,9 @@ The speed values:
 - `super_speed`: 1 if the mode is SUPER_SPEED3, else 0.
 
 The game applies its own TV effect at a high speed. The client reads `mute_speed` and `distortion_speed` of the
-playlist, and the mod makes the playlist through `set_video_clips` of the Video component of the TV. Thus the TV gets
-the effect of its own tuning.
+playlist, and the watch interaction of the game makes the playlist through the channel state. Thus the TV gets the
+effect of its own tuning. The first game test read `mute_speed` SPEED2 and `distortion_speed` SPEED2 on
+`object_tvWallDS2x1_01`: the game distorts the screen and mutes the channel already at the speed 2.
 
 A note on `set_video_clips`: the game also gives the function to the object (`obj.set_video_clips`). That copy calls
 the original function of the component, not the wrap. The research found no caller of that copy. The state changes of
@@ -124,23 +137,26 @@ build writes one table for each language code, all with the English text.
 The package has no resource of EA. The build tool reads the package back, and the tests also read it with the
 reader of the research (`D:\sims_4\experiments\tv-mod-research\dbpf_scan.py`).
 
-## The screen clip
+## The channel and its sound
 
-The mod cannot make VP6 clips. It puts a clip of the game on the TV, and the DLL mod shows the frames of the video in
-place of the frames of that clip. The mod gives only the name of the clip to `set_video_clips`. The game makes the key
-(type `0x376840D7`, group 0, instance FNV-1 64 of the name), and the mod makes the same key for
-`YoutubeTvSetScreenKey`. The package holds no EA bytes.
+The watch interaction of each channel (`tv_WatchNews`, `tv_WatchAction`, `tv_WatchMusic`, `tv_WatchCooking`,
+`tv_WatchKids`, `tv_WatchFireplace`; names from the tuning) is a `WatchSuperInteraction`
+(`objects.electronics.television`). It puts the TV into the state value of its channel, and the last Sim puts the TV
+into the off state at the end. A channel is a `VideoChannel` state value with two client state changes:
 
-The default clip is `TS4_TV_Yulelog` (instance `0x0D432B7F5C14E35D`):
+- `video_state`: the clip list. The state component calls `set_video_clips` of the Video component, and the game sends
+  the playlist to the client. The DLL mod gets the object id from that message and links the channel.
+- `audio_state`: a sound on the TV (`TunablePlayAudio`, a `PlaySound` distributable). The state component keeps it in
+  its managed distributables with the key `("audio_state", state)`.
 
-- It is in the base game (`Data\Client\ClientFullBuild1.package`, 2223420 bytes). The tool of this lane read the
-  index of the package; the mod does not copy the clip.
-- TVs show it only on the holiday channel. Thus another TV on the lot almost never shows the same clip, and the
-  fallback match of the DLL mod (by the clip key) finds the correct TV.
-- `TS4_TV_Comedy_Standup` (`0x8A50833624769271`, the key that the research checked) is a good second choice. A TV on
-  the comedy channel also shows it, so the fallback match is less sure.
+The video of the mod has its own 3D audio. Thus the mod stops the channel sound of a TV with a session: at the start of
+the session, and after each new `audio_state` of that TV (`channel_audio.py`). The sound stays in the map of the game,
+so the game stops or replaces it as usual. When the session stops, the mod starts the sounds of the TV again.
 
-The setting `screen_clip` changes the clip.
+The choice: the script mod silences the sound in the simulation, because the channel sound is a sound of the state
+value, not the audio track of the clip. If the next game test shows that the clip also plays its own audio (the sound
+key of the channel in the client), the DLL mod must force the volume of our channel to 0 in a hook on the client thread
+(`VideoChannel::Update`, offsets from code). The research did not find a sound key for the TV objects.
 
 ## The settings
 
@@ -149,7 +165,7 @@ the default, with one log line.
 
 | Field | Default | What |
 |---|---|---|
-| `screen_clip` | `TS4_TV_Yulelog` | The name of the game clip that the mod puts on the TV. Letters, digits, `_` and `-` only. |
+| `watch_affordances` | `["tv_WatchNews", "tv_WatchAction", "tv_WatchMusic"]` | The names of the watch interactions, in the order that the mod tries them. If no name matches, the mod takes the first watch interaction of the TV. 1 to 16 names of letters, digits, `_` and `-`. |
 | `enabled` | `true` | `false` hides the interaction and stops the cheat command `youtube_tv.play`. |
 
 The log of the script mod is `%LOCALAPPDATA%\Sims4Mods\logs\youtube_tv_script.log`. The mod never writes into the game
@@ -159,9 +175,9 @@ folder.
 
 | Command | What |
 |---|---|
-| `youtube_tv.play <url>` | Starts the video on the TV that is nearest to the active Sim. If the lot has no TV that works, the command tells you. |
-| `youtube_tv.stop` | Stops every video of the mod and clears the screens. |
-| `youtube_tv.status` | Shows the bridge (ready or off, and why), the settings, the screen clip key, the sessions and the last speed that the mod sent. |
+| `youtube_tv.play <url>` | The active Sim watches the video on the TV that is nearest to it. If the lot has no TV that works, the command tells you. The cheat console makes the text lower case (first game test), and YouTube video ids have upper case letters, so use the dialog for real videos. |
+| `youtube_tv.stop` | Stops every video of the mod and cancels the watch interactions. |
+| `youtube_tv.status` | Shows the bridge (ready or off, and why), the settings, the sessions, the last speed that the mod sent, and the status of the DLL mod (`renderCalls`, `framesWritten`, the audio). |
 | `youtube_tv.info` | Shows the Video component of the nearest TV: `video_display_type`, `mute_speed`, `distortion_speed`, `speed_audio_clip_replacement` and the playlist with its clip keys. This answers open point 1 of the research. |
 
 ## Build, test and install
@@ -186,32 +202,39 @@ python tools/install_script_mod.py uninstall
 - The DLL mod must be installed through the extender, and the helper through `tools/install_host.py`. Without the DLL
   mod, the interaction does not show, and the log has one line that tells why.
 
-## What the first game test must prove
+## The first game test (2026-10-25)
 
-1. The game loads the script mod: the log has the start line and no failed part, and no new exception log.
-2. The injection: the log line gives the count of object classes. Each TV of the base game and of the packs shows
-   "Watch a YouTube video". A computer, a tablet and a console do not show it.
-3. The dialog made from the factory default shows, with the title, the text, OK and Cancel. Cancel does nothing.
-4. The text box accepts 200 characters, and the characters `?`, `&`, `=` and `#` come back through the text input
-   without a change. Also test them through `youtube_tv.play`.
-5. An incorrect URL shows the notification.
-6. The clock values: `youtube_tv.status` shows the mode and the scale for pause, normal, speed 2, speed 3 and super
-   speed (mode 5, super_speed 1).
-7. `youtube_tv.info` on a TV of the base game gives `mute_speed`, `distortion_speed` and
-   `speed_audio_clip_replacement`. Record the values in `research/tv/python.md` (open point 1).
-8. After `set_video_clips` with `TS4_TV_Yulelog`, the TV shows the Yule log, and `youtube_tv.info` shows the clip key
-   `0x0D432B7F5C14E35D`.
-9. A channel change, the TV off and a broken TV stop the session (log line "the game called set_video_clips").
-10. The zone unload: a travel to another lot and the main menu stop all sessions (log line "the zone unloads"), with
-    no exception log.
-11. A move of the TV in build mode sends the new transform.
+The run notes are in `D:\sims_4\runs\2026-10-25-tv-first\notes.md`. Proved: the script mod loads (after the Python
+module of the DLL replaced `ctypes`), the injection (38 classes), the pie menu entry, the dialog and its characters
+(`?`, `&`, `=`, `#` and the case come back without a change), the clock values (pause 0/0.0, normal 1/1.0, speed 2
+2/3.0, speed 3 3/7.0), `youtube_tv.info` (`mute_speed` SPEED2, `distortion_speed` SPEED2,
+`speed_audio_clip_replacement` None on `object_tvWallDS2x1_01`), and the stop of a session on a playlist of the game.
+Found: a TV that is off shows no picture, and the cheat console makes the URL lower case. A second URL dialog did not
+take input (the owner of the dialog was a different Sim, or the synthetic input); the stacks show no wait in the mod.
+
+## What the next game test must prove
+
+Do the pie menu and the dialog by hand (not with synthetic input).
+
+1. "Watch a YouTube video" on a TV that is off: the active Sim goes to the TV, the TV turns on, the Sim watches, and
+   the video shows on the screen (the right way up, correct colours). The log has "watch: pushed tv_WatchNews".
+2. The channel sound of the game does not play (log line "channel_audio: stopped the channel sound"), and the 3D audio
+   of the video plays from the TV. If a sound of the game still plays, it is the audio of the clip: see "The channel
+   and its sound".
+3. The session stays while the Sim watches (no "the game called set_video_clips"). It stops when the Sim stops
+   watching, when the player cancels the watch, when the player picks another channel, and when the TV turns off (log
+   line "the watch interaction ended"). The channel sound plays again after the stop, if the TV stays on.
+4. `youtube_tv.stop` cancels the watch interaction.
+5. The size of the planes of the channel clip (log line "the first frame on the screen ... into WxH").
+6. A second "Watch a YouTube video" on the same TV replaces the video; a second dialog takes input.
+7. The speeds with a video: pause, speed 2 and 3, super speed, and the distortion of the game at speed 2.
+8. The zone unload with a session, and no exception log.
 
 ## Open points
 
-1. The test of the dialog through the factory default (`TunableFactory().default`): the game test must prove that the
-   default has each attribute that `build_msg` reads.
+1. Whether the clip of a channel plays its own audio in the client (then the DLL mod mutes our channel).
 2. Whether the client of the game limits the text box to fewer than 200 characters.
-3. Whether a TV that is off shows the screen clip, or whether the mod must turn the TV on first.
-4. Whether the screen clip plays its own audio track. The research did not find a sound key for the TV objects.
-5. The language codes of the string tables: the game folder has only `Strings_ENG_US.package`, so the other codes come
+3. The game distorts and mutes the TV at the speed 2 (`mute_speed` and `distortion_speed` SPEED2). The speed policy of
+   the DLL mod plays at the rate 2 with audio at that speed. The merger must decide if the video mutes at the speed 2.
+4. The language codes of the string tables: the game folder has only `Strings_ENG_US.package`, so the other codes come
    from the community list, not from the game. A wrong code has no effect, and the raw text name does not need them.

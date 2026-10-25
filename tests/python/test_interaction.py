@@ -33,7 +33,7 @@ def run(instance):
 class InteractionTest(unittest.TestCase):
     def setUp(self):
         self.tv = support.FakeObject()
-        self.sim = support.FakeObject(tags=(), video=False)
+        self.sim = support.FakeSim()
         support.reset_game([self.tv])
         self.dll = support.use_dll(support.FakeDll())
         ui_dialog_generic.shown.clear()
@@ -86,6 +86,16 @@ class InteractionTest(unittest.TestCase):
         self.assertTrue(session.has_session(self.tv.id))
         self.assertEqual(self.dll.YoutubeTvPlay.calls[0][1], URL.encode("utf-8"))
         self.assertEqual(ui_dialog_notification.shown, [])
+        # Without an active Sim, the Sim that ran the interaction watches.
+        self.assertIs(self.sim.pushed[0][1], self.tv)
+
+    def test_the_active_sim_watches(self):
+        active = support.FakeSim()
+        support.services.active_sim = active
+        dialog = self.show_dialog()
+        dialog.respond(ui_dialog_generic.OK, URL)
+        self.assertEqual(len(active.pushed), 1)
+        self.assertEqual(self.sim.pushed, [])
 
     def test_ok_with_an_incorrect_url_shows_the_error(self):
         dialog = self.show_dialog()

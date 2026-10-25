@@ -52,10 +52,28 @@ listener.
 
 See "Which TV" in `docs/research/tv/native.md`. The order of the match in `SessionManager::MatchChannel`:
 
-1. The channel that a playlist message linked to the object of a session.
+1. The channel that a playlist message linked to the object of a session. The runtime keeps the link of each object
+   that gets a playlist, also of an object with no session. This is the match that the watch design uses: the watch
+   interaction of the game puts the TV on its channel, and the channel sends a playlist.
 2. Else the object whose screen key (from the script mod) is the clip key of the channel. The mod then links that
-   channel.
+   channel. The script mod of the watch design does not send a screen key; the bridge keeps the function.
 3. Else the session of "any TV" (object id 0, only from the inspector): it takes the first channel that it sees.
+
+## The Sim watches (user decision, 2026-10-25)
+
+The first game test showed that a TV that is off shows no picture: the old design (a game clip on the TV, no Sim)
+gave a black screen. Now "Watch a YouTube video" pushes the watch interaction of the game on the active Sim
+(`docs/script-mod.md`, "The channel and its sound"):
+
+- The Sim goes to the TV, the TV turns on (the channel state), and the Sim watches. The channel sets the playlist, and
+  the DLL mod links the channel by the object id of the message. The frames of the video replace the frames of the
+  channel clip.
+- The session lives as long as the watch interaction: its end (the Sim stops, the player cancels, the player picks
+  another channel, the TV turns off) stops the video. The playlist of the channel does not stop the session.
+- The channel sound is a sound of the channel state value (`audio_state`). The script mod stops it on our TV in the
+  simulation. If the clip also has its own audio in the client, the DLL mod must set the volume of our channel to 0
+  in a hook on the client thread (`VideoChannel::Update`, offsets from code); this needs research of the volume field.
+- No change of the DLL mod is necessary for this design.
 
 ## The threads
 
@@ -99,12 +117,13 @@ while the TV plays. Options for the merger and the extender lane:
 
 ## The data flow
 
-1. The script mod calls `YoutubeTvSetScreenKey`, then `YoutubeTvPlay(objectId, url, position, orientation)`, and
-   gives the TV a playlist with the screen clip (`set_video_clips`).
+1. The script mod pushes the watch interaction of the game on the Sim, then calls
+   `YoutubeTvPlay(objectId, url, position, orientation)`.
 2. The runtime starts the helper if it does not run, and sends `open` (640x368 by default, BT.601, limited range).
 3. The helper sends `opened`; the reader maps the shared memory. The runtime adds a voice for the audio ring.
 4. The helper sends `ready`; the runtime sends the rate and `play` (or `pause`) of the speed policy.
-5. The game applies the playlist: the callbacks link the channel of the TV to its object id.
+5. The watch interaction puts the TV on its channel, and the game applies the playlist of the channel: the
+   callbacks link the channel of the TV to its object id.
 6. Each frame of the channel: `RenderFrame` -> the runtime writes the newest I420 frame into the planes.
 7. Each frame of the game: the listener follows the camera; `AudioEngine::Update` computes the 3D audio of each
    voice (position, front, top, distance curve, pan) and its volume.

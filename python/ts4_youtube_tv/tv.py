@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Sims 4 mods developers
 # ******************************************************************************
 
-"""The TV objects of the game: the tests for a TV, its Video component, its transform and the screen clip key.
+"""The TV objects of the game: the tests for a TV, its Video component, its transform and the key of a clip.
 
 A TV is an object with the catalogue tag Func_TV. Computers, tablets and consoles also have a Video component, so the
 mod tests the tag too.
@@ -10,18 +10,12 @@ mod tests the tag too.
 
 from . import fnv
 from . import log
-from . import settings
 
 # The resource type of a video clip (VP6Video). The game puts the clips in group 0.
 VIDEO_CLIP_TYPE = 0x376840D7
 VIDEO_CLIP_GROUP = 0
 
 _TV_TAG_NAMES = ("Func_TV", "Func_Television")
-
-
-def screen_clip_name():
-    """Return the name of the clip that the mod puts on the TV."""
-    return settings.get("screen_clip")
 
 
 def clip_key(clip_name):

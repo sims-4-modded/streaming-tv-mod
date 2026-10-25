@@ -69,8 +69,12 @@ Game version 1.128.90.1030. Research of 2026-10-25 (lane tv-python), from the de
 
 ## Open points
 
-1. The values of `mute_speed`, `distortion_speed` and `speed_audio_clip_replacement` on the TV tunings (binary tuning;
-   read them in the game with `video.object_info` or a cheat command of ours).
+1. The values of `mute_speed`, `distortion_speed` and `speed_audio_clip_replacement` on the TV tunings. The first game
+   test (2026-10-25, `youtube_tv.info`) read `object_tvWallDS2x1_01`: `mute_speed` SPEED2, `distortion_speed` SPEED2,
+   `speed_audio_clip_replacement` None. Other TV tunings are not read yet.
+4. (Answered by the first game test.) A TV that is off shows no picture, also with a playlist. The watch interaction
+   (`WatchSuperInteraction`) puts the TV on a channel: a `VideoChannel` state value with a `video_state` (the clips)
+   and an `audio_state` (a sound on the object, kept in the managed distributables of the state component).
 2. A test of the dialog made with the factory default, and the limit of the text box of the client; whether the
    command parser keeps `?`, `&`, `=` and `#`.
 3. Whether the client makes a video surface for a clip key that no package has (then no marker clip is necessary).
