@@ -6,6 +6,8 @@
 
 import ctypes
 import os
+import sys
+import types
 import unittest
 
 import support
@@ -106,6 +108,96 @@ class NativeTest(unittest.TestCase):
         dll.YoutubeTvPlay.side_effect = fail
         self.assertFalse(native.play(1, "x", (0, 0, 0), (0, 0, 0, 1))[0])
         self.assertFalse(native.play(1, "x", (0, 0), (0, 0, 0, 1))[0])
+
+
+class FakeNativeModule(types.ModuleType):
+    """A fake Python module ts4_youtube_tv_native, as youtube_tv.dll adds it to sys.modules."""
+
+    def __init__(self, version=1, play_result=1, error=""):
+        super().__init__(native.MODULE_NAME)
+        self.version = version
+        self.play_result = play_result
+        self.error = error
+        self.calls = []
+
+    def api_version(self):
+        return self.version
+
+    def play(self, object_id, url, position, orientation):
+        self.calls.append(("play", object_id, url, position, orientation))
+        return self.play_result
+
+    def stop(self, object_id):
+        self.calls.append(("stop", object_id))
+        return 1
+
+    def stop_all(self):
+        self.calls.append(("stop_all",))
+
+    def set_speed(self, mode, scale, super_speed):
+        self.calls.append(("set_speed", mode, scale, super_speed))
+
+    def set_transform(self, object_id, position, orientation):
+        self.calls.append(("set_transform", object_id, position, orientation))
+
+    def set_screen_key(self, object_id, instance, resource_type, group):
+        self.calls.append(("set_screen_key", object_id, instance, resource_type, group))
+
+    def last_error(self):
+        return self.error
+
+
+class NativeModuleTest(unittest.TestCase):
+    def use_module(self, module):
+        sys.modules[native.MODULE_NAME] = module
+        native.reset()
+        return module
+
+    def tearDown(self):
+        sys.modules.pop(native.MODULE_NAME, None)
+        native.reset()
+        support.use_dll(None)
+
+    def test_uses_the_python_module_first(self):
+        module = self.use_module(FakeNativeModule())
+        self.assertTrue(native.available())
+        self.assertEqual(native.api_version(), 1)
+        ok, error = native.play(77, "https://youtu.be/M7lc1UVf-VE?t=5&x=#y", (1, 2, 3), (0, 0, 0.5, 1))
+        self.assertTrue(ok)
+        self.assertIsNone(error)
+        self.assertEqual(module.calls[0],
+                         ("play", 77, "https://youtu.be/M7lc1UVf-VE?t=5&x=#y", (1.0, 2.0, 3.0), (0.0, 0.0, 0.5, 1.0)))
+        native.set_speed(5, 25.0, True)
+        self.assertTrue(native.stop(9))
+        native.stop_all()
+        native.set_screen_key(9, 0x0D432B7F5C14E35D, 0x376840D7, 0)
+        native.set_transform(9, (4, 5, 6), (0, 0, 0, 1))
+        self.assertEqual([call[0] for call in module.calls[1:]],
+                         ["set_speed", "stop", "stop_all", "set_screen_key", "set_transform"])
+        self.assertEqual(module.calls[1], ("set_speed", 5, 25.0, 1))
+
+    def test_gives_the_error_of_the_python_module(self):
+        self.use_module(FakeNativeModule(play_result=0, error="the helper is not installed"))
+        ok, error = native.play(1, "https://youtu.be/M7lc1UVf-VE", (0, 0, 0), (0, 0, 0, 1))
+        self.assertFalse(ok)
+        self.assertEqual(error, "the helper is not installed")
+
+    def test_turns_off_for_another_api_version_of_the_module(self):
+        self.use_module(FakeNativeModule(version=2))
+        self.assertFalse(native.available())
+        self.assertIn("API version 2", native.reason())
+
+    def test_tries_again_when_the_module_comes_later(self):
+        saved = native.ctypes
+        native.ctypes = None
+        try:
+            native.reset()
+            self.assertFalse(native.available())
+            self.assertIn("has no ctypes", native.reason())
+            sys.modules[native.MODULE_NAME] = FakeNativeModule()
+            self.assertTrue(native.available())
+        finally:
+            native.ctypes = saved
 
 
 if __name__ == "__main__":

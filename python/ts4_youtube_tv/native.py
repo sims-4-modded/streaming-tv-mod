@@ -7,19 +7,29 @@
 Only this module knows the C interface of the DLL mod. When the extender gets its native Python module, only this
 module changes.
 
-The extender loads youtube_tv.dll. This module does not load a second copy: it gets the handle of the loaded module
-and makes a ctypes library from that handle. If the DLL is not loaded, or its API version is not 1, the bridge turns
-off with one log line. Then each function of this module does nothing and returns a failure.
+The extender loads youtube_tv.dll. The game Python has no ctypes, so the DLL adds the Python module
+ts4_youtube_tv_native to sys.modules. This module uses that Python module first. If the Python module is not there and
+ctypes is there, this module gets the handle of the loaded DLL and makes a ctypes library from that handle. It does
+not load a second copy of the DLL. If neither works, or the API version is not 1, the bridge turns off with one log
+line. Then each function of this module does nothing and returns a failure. If the DLL is not there yet, the next
+call tries again.
 
 Each function of this module catches each exception, writes it to the log, and returns a failure. The game Python
 calls these functions on the main thread, as the bridge needs.
 """
 
-import ctypes
+import importlib
 
 from . import log
 
+try:
+    import ctypes
+except ImportError:
+    # The game Python has no ctypes. The bridge then uses the Python module of the DLL.
+    ctypes = None
+
 DLL_NAME = "youtube_tv.dll"
+MODULE_NAME = "ts4_youtube_tv_native"
 API_VERSION = 1
 
 _ERROR_BUFFER_SIZE = 1024
@@ -28,10 +38,50 @@ _dll = None
 _loaded = False
 _reason = "the bridge did not start"
 _api_version = None
+_absent_logged = False
+
+
+class _ModuleLibrary:
+    """The functions of the Python module of the DLL, with the names and the arguments of the C interface."""
+
+    uses_ctypes = False
+
+    def __init__(self, module):
+        self._module = module
+
+    def YoutubeTvApiVersion(self):
+        return self._module.api_version()
+
+    def YoutubeTvPlay(self, object_id, url, position, orientation):
+        return self._module.play(object_id, url.decode("utf-8"), tuple(position), tuple(orientation))
+
+    def YoutubeTvStop(self, object_id):
+        return self._module.stop(object_id)
+
+    def YoutubeTvStopAll(self):
+        self._module.stop_all()
+
+    def YoutubeTvSetSpeed(self, mode, scale, super_speed):
+        self._module.set_speed(mode, scale, super_speed)
+
+    def YoutubeTvSetTransform(self, object_id, position, orientation):
+        self._module.set_transform(object_id, tuple(position), tuple(orientation))
+
+    def YoutubeTvSetScreenKey(self, object_id, instance, resource_type, group):
+        self._module.set_screen_key(object_id, instance, resource_type, group)
+
+    def last_error_text(self):
+        return self._module.last_error()
 
 
 def _open_dll():
-    """Return a ctypes library for the youtube_tv.dll that the extender loaded, or (None, reason)."""
+    """Return a library for the youtube_tv.dll that the extender loaded, or (None, reason)."""
+    try:
+        return _ModuleLibrary(importlib.import_module(MODULE_NAME)), None
+    except ImportError:
+        pass
+    if ctypes is None:
+        return None, "the Python module {} is not there and the game Python has no ctypes".format(MODULE_NAME)
     if not hasattr(ctypes, "WinDLL"):
         return None, "ctypes has no WinDLL on this system"
     # A private kernel32 object, so that the prototypes of this module do not change those of other mods.
@@ -46,7 +96,9 @@ def _open_dll():
 
 
 def _set_prototypes(dll):
-    """Give each function of the DLL its argument types and its result type."""
+    """Give each function of the DLL its argument types and its result type. The Python module needs no types."""
+    if not getattr(dll, "uses_ctypes", True):
+        return
     c_float_p = ctypes.POINTER(ctypes.c_float)
     prototypes = (
         ("YoutubeTvApiVersion", (), ctypes.c_uint32),
@@ -66,9 +118,10 @@ def _set_prototypes(dll):
 
 def reset(opener=None):
     """Forget the DLL. The next call loads it again with the opener (the tests give a fake opener)."""
-    global _dll, _loaded, _reason, _api_version, _open_dll_function
+    global _dll, _loaded, _reason, _api_version, _open_dll_function, _absent_logged
     _dll = None
     _loaded = False
+    _absent_logged = False
     _reason = "the bridge did not start"
     _api_version = None
     _open_dll_function = opener if opener is not None else _open_dll
@@ -79,16 +132,19 @@ _open_dll_function = _open_dll
 
 def load():
     """Load the bridge once. Return True if the DLL is ready. Write one log line for the result."""
-    global _dll, _loaded, _reason, _api_version
+    global _dll, _loaded, _reason, _api_version, _absent_logged
     if _loaded:
         return _dll is not None
-    _loaded = True
     try:
         dll, reason = _open_dll_function()
         if dll is None:
+            # The DLL can come later, so the next call tries again. Only the first failure writes the log.
             _reason = reason
-            log.write("native: the YouTube TV is off: {}".format(reason))
+            if not _absent_logged:
+                _absent_logged = True
+                log.write("native: the YouTube TV is off: {}".format(reason))
             return False
+        _loaded = True
         _set_prototypes(dll)
         _api_version = int(dll.YoutubeTvApiVersion())
         if _api_version != API_VERSION:
@@ -101,6 +157,7 @@ def load():
         log.write("native: {} is ready (API version {})".format(DLL_NAME, _api_version))
         return True
     except Exception:  # noqa: BLE001 - a bad DLL must not stop the game.
+        _loaded = True
         _reason = "the bridge to {} failed".format(DLL_NAME)
         log.exception("native: the YouTube TV is off: {}".format(_reason))
         _dll = None
@@ -128,6 +185,8 @@ def _vector(values, count):
     values = tuple(float(v) for v in values)
     if len(values) != count:
         raise ValueError("the vector must have {} values".format(count))
+    if not getattr(_dll, "uses_ctypes", True):
+        return values
     return (ctypes.c_float * count)(*values)
 
 
@@ -136,6 +195,8 @@ def last_error():
     if not available():
         return _reason or ""
     try:
+        if not getattr(_dll, "uses_ctypes", True):
+            return _dll.last_error_text()
         buffer = ctypes.create_string_buffer(_ERROR_BUFFER_SIZE)
         length = int(_dll.YoutubeTvLastError(buffer, _ERROR_BUFFER_SIZE))
         length = max(0, min(length, _ERROR_BUFFER_SIZE - 1))
