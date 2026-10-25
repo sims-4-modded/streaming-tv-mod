@@ -38,11 +38,11 @@ All in `TS4_x64.exe`. The signatures are in `src/core/VideoLayout.h`; the RVAs a
 | `HandleVideoSetPlaylist` | before | 1: message | Keeps the object id and the clip keys of the message (it reads the bytes of the message before the game parses them). |
 | `UpdateListenerFromCamera` | after | 1: listener state | Reads the copy of the camera matrix and moves the listener of the 3D audio. |
 
-**The rule of the arguments.** The hook manager of the extender gives the original function only the four register
-arguments. The mod puts a callback only on a function with four or fewer integer or pointer arguments
-(`docs/research/tv/offsets.md`, "The arguments of each hooked function"). `VideoComponent::SetPlaylist` has three more
-arguments on the stack: a hook on it gave random flags to the playlist of every TV, and every TV stayed black (the
-fourth game test). The mod has no hook on it since 2026-10-25.
+**The rule of the arguments.** Before `common` `f0dd9c3`, the hook manager of the extender gave the original function only
+the four register arguments (`docs/research/tv/offsets.md`, "The arguments of each hooked function").
+`VideoComponent::SetPlaylist` has three more arguments on the stack: a hook on it gave random flags to the playlist of
+every TV, and every TV stayed black (the fourth game test). The hook manager now keeps every stack and float
+argument. The mod still has no hook on `SetPlaylist`: the link by the clip does not need it.
 
 The mod reads the offsets one time, in `Ts4ModInit`: the extender loads the DLL mods after the exe is decrypted, and
 it puts its hooks on the functions after the inits. A hook changes the first bytes of a function, so a signature

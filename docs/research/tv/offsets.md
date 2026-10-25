@@ -88,6 +88,9 @@ u64 and a pointer; renderer: two u32 and a pointer).
 
 ## The arguments of each hooked function (2026-10-25, lane `mods/no-setplaylist-hook`)
 
+Fixed in `common` `f0dd9c3` (2026-10-25): an assembly entry now keeps every register, stack and float argument.
+The table below stays as a record of the cause of the black screen.
+
 The hook manager of `common` (`src/mod_game/Hooks.cpp`, `HookEntry`) gives the original function only the four
 register arguments (RCX, RDX, R8, R9). A function that reads an argument from the stack, or a float argument in
 XMM0..XMM3, gets other values through the hook. The check below reads the disassembly in the catalogue: the frame

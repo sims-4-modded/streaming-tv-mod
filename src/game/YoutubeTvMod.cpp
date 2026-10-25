@@ -241,9 +241,8 @@ void YoutubeTvMod::EnsureLayouts()
 
 void YoutubeTvMod::RegisterCallbacks()
 {
-	// The extender gives only the four register arguments to the original function. Thus the mod puts a callback
-	// only on a function that has four or fewer arguments, and no floating-point argument. The function that gives
-	// the list of clips to the video component has more arguments: the mod does not put a callback on it.
+	// The mod links a TV to its channel by the clip. Thus it does not need a callback on the function that gives the
+	// list of clips to the video component.
 	namespace layout = game_layout;
 	const auto add = [this](const sdk::FunctionRef& function, Ts4HookPhase phase, std::string_view name,
 	                        std::function<void(const Ts4Call&)> callback) {
