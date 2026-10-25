@@ -52,9 +52,10 @@ Each pattern was checked: exactly one match in its window of the image of this v
 The first pattern of the listener (`0F 11 46 ?? 41 0F 10 8E`, the copy at `0x01A78A81`) matched two places; the
 compare at `0x01A789E0` matches one.
 
-#The object id of a playlist message is at op +0x30: the key of the object at +0x28, and the id 8 bytes into it. The
+The object id of a playlist message is at op +0x30: the key of the object at +0x28, and the id 8 bytes into it. The
 first version read op +0x28 and got another field of the key (for example `0x7ff400000001`); the third game test
-(`D:\sims_4uns6-10-25-tv-third
+(`D:\sims_4
+uns6-10-25-tv-third
 otes.md`) showed it. Thus the playlist never linked the channel of our TV.
 
 ## The clip key
