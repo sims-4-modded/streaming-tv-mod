@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <thread>
@@ -32,8 +33,9 @@ public:
 
 	/// The runtime for the bridge of the script mod.
 	[[nodiscard]] TvRuntime& Runtime() { return *_runtime; }
-	/// True on the thread that called `Ts4ModInit`: the main thread of the game.
-	[[nodiscard]] bool OnMainThread() const { return std::this_thread::get_id() == _mainThread; }
+	/// True on the main thread of the game. The extender can call `Ts4ModInit` on its start thread, so the mod takes
+	/// the main thread from its first task. Before that task runs, the result is false.
+	[[nodiscard]] bool OnMainThread() const { return std::this_thread::get_id() == _mainThread.load(); }
 
 	/// The last error of the bridge of the script mod.
 	[[nodiscard]] const std::string& BridgeError() const { return _bridgeError; }
@@ -50,7 +52,7 @@ private:
 
 	std::unique_ptr<sdk::ModHost> _host;
 	std::unique_ptr<TvRuntime> _runtime;
-	std::thread::id _mainThread;
+	std::atomic<std::thread::id> _mainThread {};
 	bool _layoutsRead = false;
 	bool _layoutWaitLogged = false;
 	std::string _bridgeError;

@@ -77,13 +77,22 @@ ts4::Result<std::unique_ptr<YoutubeTvMod>> YoutubeTvMod::Start(std::unique_ptr<s
 	// The extender puts its hooks on the functions after the inits. A hook changes the first bytes of a function,
 	// and then the signatures do not match. Thus the mod reads the offsets now.
 	self.EnsureLayouts();
+	// A task runs on the main thread. The bridge accepts only calls on that thread.
+	if (!self._host->PostTask([] {
+		    if (auto* active = ActiveYoutubeTvMod(); active != nullptr)
+		    {
+			    active->_mainThread = std::this_thread::get_id();
+		    }
+	    }))
+	{
+		self._host->Warn("the extender refused the task that finds the main thread");
+	}
 	self._host->Info("start on the game version {}", ToString(self._host->Version()));
 	return mod;
 }
 
 YoutubeTvMod::YoutubeTvMod(std::unique_ptr<sdk::ModHost> host)
     : _host(std::move(host))
-    , _mainThread(std::this_thread::get_id())
 {
 	auto* raw = _host.get();
 	_runtime = std::make_unique<TvRuntime>(
