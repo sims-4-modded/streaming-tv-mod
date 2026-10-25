@@ -2,8 +2,9 @@
 
 Lane `tv-dll`, 2026-10-25. Tree of every RVA in this note: **`TS4_x64_1.128.90.1030`** (the decrypted exe,
 `D:\sims_4\dump\TS4_1.128.90.1030\TS4_x64.image.bin`). The catalogue entries
-(`D:\sims_4uns6-10-25-tv-third
-otes.md`) showed it. Thus the playlist never linked the channel of our TV.
+(`D:\sims_4\ghidra-catalogue\TS4_x64_1.128.90.1030\fn\<RVA>.md`) have the full disassembly.
+
+The rule of `ts4-modern-cpp`: a field offset of a game object comes only from an instruction of the game. The mod
 finds the function by its signature, searches a window of its code for one instruction pattern, and reads the
 displacement of that instruction (`src/core/CodeOffsets.h`, the rules in `src/core/VideoLayout.h`). Each rule must
 match exactly one place in its window, and its value must be in a range and aligned. If a rule fails, the parts that
@@ -53,11 +54,9 @@ compare at `0x01A789E0` matches one.
 
 The object id of a playlist message is at op +0x30: the key of the object at +0x28, and the id 8 bytes into it. The
 first version read op +0x28 and got another field of the key (for example `0x7ff400000001`); the third game test
-(`D:\sims_4
-uns6-10-25-tv-third
-otes.md`) showed it. Thus the playlist never linked the channel of our TV.
+(`D:\sims_4\runs\2026-10-25-tv-third\notes.md`) showed it. Thus the playlist never linked the channel of our TV.
 
-## The clip key
+### The clip key
 
 The key is 16 bytes: u64 instance, u32 type, u32 group. `HandleVideoSetPlaylist` builds it in this order from the
 protobuf `ResourceKey` (`0x0022741B` .. `0x0022742D`: the instance at key +0, the field at message +0x10 at key +8,
