@@ -11,6 +11,8 @@ cmake_install.cmake
 Makefile
 makefile
 build*
+# The build tool of the script mod is a source file.
+!tools/build_script_mod.py
 prebuilt
 
 ## windows build process

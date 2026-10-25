@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<I c="WatchYoutubeVideoInteraction" i="interaction" m="ts4_youtube_tv.interaction" n="ts4_youtube_tv:WatchYoutubeVideo" s="18064809103628508578">
+  <T n="display_name">0x260C9DE0<!--Watch a YouTube video--></T>
+  <T n="allow_user_directed">True</T>
+  <T n="allow_from_world">True</T>
+  <E n="target_type">OBJECT</E>
+</I>
