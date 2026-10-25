@@ -15,6 +15,7 @@
 #include <mod_game/Python.h>
 
 #include "game/Bridge.h"
+#include "game/YoutubeTvMod.h"
 
 namespace ts4_mod::youtube_tv::python_module
 {
@@ -216,8 +217,27 @@ PyObject* LastError(PyObject*, PyObject*)
 	});
 }
 
+PyObject* Status(PyObject*, PyObject*)
+{
+	return Guarded([](const ModuleExports& py) -> PyObject* {
+		auto* mod = ActiveYoutubeTvMod();
+		if (mod == nullptr)
+		{
+			py.PyErr_SetString(*py.PyExc_RuntimeError, "youtube_tv.dll is not ready");
+			return nullptr;
+		}
+		if (!mod->OnPythonThread())
+		{
+			py.PyErr_SetString(*py.PyExc_RuntimeError, "the call is not on the thread of the game Python");
+			return nullptr;
+		}
+		const auto text = mod->Runtime().Status().dump();
+		return py.Py_BuildValue("s", text.c_str());
+	});
+}
+
 /// The functions of the module. Python keeps pointers to these rows, so the table is static.
-std::array<PyMethodDef, 8> s_methods {{
+std::array<PyMethodDef, 9> s_methods {{
     {"api_version", &ApiVersion, k_MethNoArgs, "api_version() -> int: the version of the bridge."},
     {"play", &Play, k_MethVarArgs, "play(object_id, url, (x, y, z), (x, y, z, w)) -> int: 1, or 0 and last_error()."},
     {"stop", &Stop, k_MethVarArgs, "stop(object_id) -> int: 1 if a video stopped."},
@@ -226,6 +246,7 @@ std::array<PyMethodDef, 8> s_methods {{
     {"set_transform", &SetTransform, k_MethVarArgs, "set_transform(object_id, (x, y, z), (x, y, z, w))."},
     {"set_screen_key", &SetScreenKey, k_MethVarArgs, "set_screen_key(object_id, instance, type, group)."},
     {"last_error", &LastError, k_MethNoArgs, "last_error() -> str: the error of the last call."},
+    {"status", &Status, k_MethNoArgs, "status() -> str: the status of the DLL as JSON text."},
 }};
 
 } // namespace

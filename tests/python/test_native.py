@@ -146,6 +146,9 @@ class FakeNativeModule(types.ModuleType):
     def last_error(self):
         return self.error
 
+    def status(self):
+        return '{"renderCalls": 3}'
+
 
 class NativeModuleTest(unittest.TestCase):
     def use_module(self, module):
@@ -175,6 +178,12 @@ class NativeModuleTest(unittest.TestCase):
         self.assertEqual([call[0] for call in module.calls[1:]],
                          ["set_speed", "stop", "stop_all", "set_screen_key", "set_transform"])
         self.assertEqual(module.calls[1], ("set_speed", 5, 25.0, 1))
+
+    def test_gives_the_status_of_the_python_module(self):
+        self.use_module(FakeNativeModule())
+        self.assertEqual(native.status_text(), '{"renderCalls": 3}')
+        support.use_dll(support.FakeDll())
+        self.assertEqual(native.status_text(), "")
 
     def test_gives_the_error_of_the_python_module(self):
         self.use_module(FakeNativeModule(play_result=0, error="the helper is not installed"))

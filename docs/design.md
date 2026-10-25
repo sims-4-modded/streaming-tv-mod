@@ -158,6 +158,7 @@ adds its own Python module to the interpreter (`src/game/PythonModule.cpp`):
 | `set_transform(object_id, (x, y, z), (x, y, z, w))` | `YoutubeTvSetTransform` |
 | `set_screen_key(object_id, instance, type, group)` | `YoutubeTvSetScreenKey` |
 | `last_error() -> str` | `YoutubeTvLastError` |
+| `status() -> str` | `TvRuntime::Status` as JSON text (the same as the query `youtube_tv.status`); the cheat command `youtube_tv.status` shows it. |
 
 A wrong argument type gives a `TypeError`; an exception of C++ gives a `RuntimeError`. `Ts4ModShutdown` removes the
 module from `sys.modules`. When the extender gets its own native Python module (stage 4), this module can move there.

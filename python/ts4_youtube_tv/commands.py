@@ -84,6 +84,9 @@ def run_status(connection):
     _output("Last speed sent: {}.".format(
         "none" if clock.last_sent is None else "mode={}, scale={}, super_speed={}".format(*clock.last_sent)),
         connection)
+    dll_status = native.status_text()
+    if dll_status:
+        _output("DLL: {}".format(dll_status), connection)
     return True
 
 

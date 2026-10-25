@@ -73,6 +73,9 @@ class _ModuleLibrary:
     def last_error_text(self):
         return self._module.last_error()
 
+    def status_text(self):
+        return self._module.status()
+
 
 def _open_dll():
     """Return a library for the youtube_tv.dll that the extender loaded, or (None, reason)."""
@@ -203,6 +206,20 @@ def last_error():
         return buffer.raw[:length].decode("utf-8", "replace")
     except Exception:  # noqa: BLE001
         log.exception("native: YoutubeTvLastError failed")
+        return ""
+
+
+def status_text():
+    """Return the status of the DLL mod as JSON text, or an empty text. Only the Python module of the DLL gives it."""
+    if not available():
+        return ""
+    status = getattr(_dll, "status_text", None)
+    if status is None:
+        return ""
+    try:
+        return str(status())
+    except Exception:  # noqa: BLE001
+        log.exception("native: the status of the DLL failed")
         return ""
 
 
