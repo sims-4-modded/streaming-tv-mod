@@ -170,19 +170,25 @@ ts4::Result<std::unique_ptr<HostClient>> HostClient::Start(const Options& option
 	}
 	::ResumeThread(process.hThread);
 	client->_reader = std::jthread([raw = client.get()] { raw->ReadEvents(); });
+	client->_writer = std::jthread([raw = client.get()] { raw->WriteCommands(); });
 	return client;
 }
 
 HostClient::~HostClient()
 {
 	Send(host::HostCommand {.type = host::CommandType::Quit});
+	_commands.Close();
 	if (_process)
 	{
 		::WaitForSingleObject(_process.get(), k_QuitWaitMs);
 	}
-	// Closing the job stops each process of the helper that is still there. Then the pipe of the events closes, and
-	// the reader thread stops.
+	// Closing the job stops each process of the helper that is still there. Then a write to the pipe fails, so the
+	// writer thread stops, and the pipe of the events closes, so the reader thread stops.
 	_job.reset();
+	if (_writer.joinable())
+	{
+		_writer.join();
+	}
 	_input.reset();
 	if (_reader.joinable())
 	{
@@ -192,15 +198,22 @@ HostClient::~HostClient()
 
 bool HostClient::Send(const host::HostCommand& command)
 {
-	const auto line = host::CommandLine(command) + "\n";
-	const std::lock_guard lock(_sendMutex);
-	if (!_input)
+	return _commands.Push(host::CommandLine(command) + "\n");
+}
+
+void HostClient::WriteCommands()
+{
+	while (auto line = _commands.Pop())
 	{
-		return false;
+		DWORD written = 0;
+		if (::WriteFile(_input.get(), line->data(), static_cast<DWORD>(line->size()), &written, nullptr) == 0 ||
+		    written != line->size())
+		{
+			// The pipe closed: the helper stopped. Refuse the next commands.
+			_commands.Close();
+			return;
+		}
 	}
-	DWORD written = 0;
-	return ::WriteFile(_input.get(), line.data(), static_cast<DWORD>(line.size()), &written, nullptr) != 0 &&
-	       written == line.size();
 }
 
 std::vector<host::HostEvent> HostClient::TakeEvents()

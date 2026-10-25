@@ -9,6 +9,7 @@
 #include <chrono>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <string>
@@ -30,8 +31,13 @@ namespace ts4_mod::youtube_tv
 {
 
 /// The YouTube TV without the extender: the sessions, the helper, the 3D audio and the writes into the frames of the
-/// game. The hook callbacks, the queries and the bridge of the script mod call it, all on the main thread. The
-/// probe tool calls it with fake objects of the game.
+/// game. The probe tool calls it with fake objects of the game.
+///
+/// Two threads of the game call it. The client main thread (the tick of the extender) runs the hook callbacks and the
+/// queries; only these read or write the memory of the game. The thread of the game Python runs the bridge of the
+/// script mod; the bridge changes only the sessions and the settings. Each public function takes one lock. The lock
+/// covers only short work on the state of the runtime: commands to the helper go to the queue of its writer thread,
+/// and the copy of a frame into the planes of the game occurs after the lock is released.
 class TvRuntime
 {
 public:
@@ -43,13 +49,13 @@ public:
 	TvRuntime& operator=(const TvRuntime&) = delete;
 
 	/// Give the offsets that the mod read from the code of the game. A part with no offsets stays off.
-	void SetRendererLayout(const game_layout::RendererLayout& layout) { _renderer = layout; }
-	void SetChannelLayout(const game_layout::ChannelLayout& layout) { _channel = layout; }
-	void SetListenerOffset(std::size_t offset) { _listenerOffset = offset; }
+	void SetRendererLayout(const game_layout::RendererLayout& layout);
+	void SetChannelLayout(const game_layout::ChannelLayout& layout);
+	void SetListenerOffset(std::size_t offset);
 
 	/// Use new settings. The size, the frame rate and the matrix apply to the next videos.
 	void ApplySettings(const YoutubeTvSettings& settings);
-	[[nodiscard]] const YoutubeTvSettings& Settings() const { return _settings; }
+	[[nodiscard]] YoutubeTvSettings Settings() const;
 
 	// The calls of the script mod and of the inspector.
 
@@ -84,12 +90,17 @@ public:
 
 	/// The shared memory of the video of a TV, or null. The probe uses it.
 	[[nodiscard]] std::shared_ptr<MappedVideo> VideoOf(std::uint64_t objectId);
-	[[nodiscard]] const Session* SessionOf(std::uint64_t objectId) { return _sessions.Find(objectId); }
+	/// The session of a TV, or null. Only the probe uses it, on one thread: the pointer is not safe for two threads.
+	[[nodiscard]] const Session* SessionOf(std::uint64_t objectId);
 
 	/// The audio engine, or null. The probe uses it.
 	[[nodiscard]] AudioEngine* Audio() { return _audio.get(); }
 
 private:
+	// The functions below run with the lock held.
+
+	void PumpLocked();
+	void SetListenerPoseLocked(const AudioPose& pose);
 	void Log(Ts4LogLevel level, const std::string& text) const;
 	/// Write a line only the first time for this key.
 	void LogOnce(const std::string& key, Ts4LogLevel level, const std::string& text);
@@ -99,6 +110,8 @@ private:
 	void OnEvent(const host::HostEvent& event);
 	void UpdateAudio();
 
+	/// The lock of the state below. The log function and the memory access need no lock.
+	mutable std::mutex _mutex;
 	YoutubeTvSettings _settings;
 	LogFn _log;
 	std::unique_ptr<MemoryAccess> _memory;

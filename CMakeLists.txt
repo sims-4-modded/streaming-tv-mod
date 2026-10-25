@@ -37,9 +37,11 @@ add_library(
   src/core/GameObjects.h
   src/core/HostCommand.h
   src/core/HostProtocol.h
+  src/core/LineQueue.h
   src/core/PlayerPage.h
   src/core/Sessions.h
   src/core/SpeedPolicy.h
+  src/core/ThreadGate.h
   src/core/Yuv.h
   src/core/YoutubeTvSettings.h
   src/core/VideoLayout.h

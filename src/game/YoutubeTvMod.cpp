@@ -11,6 +11,7 @@
 #include <string>
 #include <utility>
 
+#include <Windows.h>
 #include <core/BridgeArgs.h>
 #include <core/VideoLayout.h>
 #include <mod_core/GameVersion.h>
@@ -116,7 +117,7 @@ void YoutubeTvMod::PostMainThreadTask()
 
 void YoutubeTvMod::OnMainThreadTask()
 {
-	_mainThread = std::this_thread::get_id();
+	_mainThread = static_cast<std::uint32_t>(::GetCurrentThreadId());
 	++_pythonTries;
 	auto registered = python_module::Register();
 	if (!registered)
@@ -130,7 +131,29 @@ void YoutubeTvMod::OnMainThreadTask()
 		PostMainThreadTask();
 		return;
 	}
-	_host->Info("the Python module {} is in sys.modules (try {}, on the main thread)", k_PythonModuleName, _pythonTries);
+	_host->Info("the Python module {} is in sys.modules (try {}, on the main thread {})", k_PythonModuleName, _pythonTries,
+	            _mainThread.load());
+}
+
+bool YoutubeTvMod::OnPythonThread()
+{
+	const auto thread = static_cast<std::uint32_t>(::GetCurrentThreadId());
+	switch (_pythonGate.Enter(thread))
+	{
+	case ThreadGate::Entry::First:
+		_host->Info("the bridge takes calls on thread {}, the thread of the game Python (the main thread is {})", thread,
+		            _mainThread.load());
+		return true;
+	case ThreadGate::Entry::Accepted:
+		return true;
+	case ThreadGate::Entry::Refused:
+		break;
+	}
+	if (!_refusalLogged.exchange(true))
+	{
+		_host->Warn("the bridge refused a call on thread {}; it takes calls only on thread {}", thread, _pythonGate.Thread());
+	}
+	return false;
 }
 
 void YoutubeTvMod::EnsureLayouts()

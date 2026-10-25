@@ -12,6 +12,7 @@
 #include <thread>
 
 #include <common/Result.h>
+#include <core/ThreadGate.h>
 #include <core/YoutubeTvSettings.h>
 #include <mod_sdk/ModHost.h>
 
@@ -35,9 +36,12 @@ public:
 
 	/// The runtime for the bridge of the script mod.
 	[[nodiscard]] TvRuntime& Runtime() { return *_runtime; }
-	/// True on the main thread of the game. The extender can call `Ts4ModInit` on its start thread, so the mod takes
-	/// the main thread from its first task. Before that task runs, the result is false.
-	[[nodiscard]] bool OnMainThread() const { return std::this_thread::get_id() == _mainThread.load(); }
+	/// True on the thread of the game Python. The bridge accepts calls only on that thread. The first call of the bridge
+	/// gives the thread, and the mod writes it to the log one time. The game Python does not run on the main thread of
+	/// the extender.
+	[[nodiscard]] bool OnPythonThread();
+	/// The thread of the game Python, or 0 before the first call of the bridge.
+	[[nodiscard]] std::uint32_t PythonThread() const { return _pythonGate.Thread(); }
 
 	/// The last error of the bridge of the script mod.
 	[[nodiscard]] const std::string& BridgeError() const { return _bridgeError; }
@@ -58,7 +62,10 @@ private:
 
 	std::unique_ptr<sdk::ModHost> _host;
 	std::unique_ptr<TvRuntime> _runtime;
-	std::atomic<std::thread::id> _mainThread {};
+	/// The client main thread: the thread of the first task of the extender, or 0 before it.
+	std::atomic<std::uint32_t> _mainThread {0};
+	ThreadGate _pythonGate;
+	std::atomic<bool> _refusalLogged {false};
 	std::uint64_t _pythonTries = 0;
 	bool _layoutsRead = false;
 	bool _layoutWaitLogged = false;

@@ -19,6 +19,7 @@
 #include <common/Result.h>
 #include <core/HostCommand.h>
 #include <core/HostProtocol.h>
+#include <core/LineQueue.h>
 
 #include "game/WinHandle.h"
 
@@ -68,7 +69,7 @@ public:
 	HostClient(const HostClient&) = delete;
 	HostClient& operator=(const HostClient&) = delete;
 
-	/// Send one command. Return false if the pipe is closed.
+	/// Queue one command for the writer thread. It never waits for the pipe. Return false if the pipe is closed.
 	bool Send(const host::HostCommand& command);
 
 	/// The events since the last call, in order. The client adds the event `exit` when the pipe of the events closes,
@@ -88,6 +89,7 @@ private:
 	HostClient() = default;
 
 	void ReadEvents();
+	void WriteCommands();
 	void Push(host::HostEvent event);
 
 	UniqueHandle _job;
@@ -100,8 +102,9 @@ private:
 	std::vector<host::HostEvent> _events;
 	std::map<std::int32_t, std::shared_ptr<MappedVideo>> _videos;
 	bool _running = true;
-	std::mutex _sendMutex;
+	LineQueue _commands;
 	std::jthread _reader;
+	std::jthread _writer;
 };
 
 } // namespace ts4_mod::youtube_tv

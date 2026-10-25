@@ -11,9 +11,11 @@
 #include <cstdint>
 
 #include <exception>
+#include <format>
 #include <functional>
 #include <string>
 
+#include <Windows.h>
 #include <core/BridgeArgs.h>
 
 #include "game/YoutubeTvMod.h"
@@ -38,9 +40,10 @@ std::uint32_t Call(const std::function<std::string(YoutubeTvMod&)>& call)
 	std::string error;
 	try
 	{
-		if (!mod->OnMainThread())
+		if (!mod->OnPythonThread())
 		{
-			error = "the call is not on the main thread of the game";
+			error = std::format("the call is on thread {}, but the bridge takes calls only on thread {}",
+			                    ::GetCurrentThreadId(), mod->PythonThread());
 		}
 		else
 		{

@@ -66,8 +66,39 @@ void TvRuntime::LogOnce(const std::string& key, Ts4LogLevel level, const std::st
 	}
 }
 
+void TvRuntime::SetRendererLayout(const game_layout::RendererLayout& layout)
+{
+	const std::lock_guard lock(_mutex);
+	_renderer = layout;
+}
+
+void TvRuntime::SetChannelLayout(const game_layout::ChannelLayout& layout)
+{
+	const std::lock_guard lock(_mutex);
+	_channel = layout;
+}
+
+void TvRuntime::SetListenerOffset(std::size_t offset)
+{
+	const std::lock_guard lock(_mutex);
+	_listenerOffset = offset;
+}
+
+YoutubeTvSettings TvRuntime::Settings() const
+{
+	const std::lock_guard lock(_mutex);
+	return _settings;
+}
+
+const Session* TvRuntime::SessionOf(std::uint64_t objectId)
+{
+	const std::lock_guard lock(_mutex);
+	return _sessions.Find(objectId);
+}
+
 void TvRuntime::ApplySettings(const YoutubeTvSettings& settings)
 {
+	const std::lock_guard lock(_mutex);
 	_settings = settings;
 	if (_audio)
 	{
@@ -86,7 +117,7 @@ ts4::Result<void> TvRuntime::EnsureHelper()
 	if (_client)
 	{
 		// The helper stopped. Use the last events, remove the videos that failed with it, and start a new helper.
-		Pump();
+		PumpLocked();
 		_client.reset();
 		Run(_sessions.StopAll());
 	}
@@ -137,6 +168,7 @@ void TvRuntime::EnsureAudio()
 
 ts4::Result<void> TvRuntime::Play(std::uint64_t objectId, std::string_view url, std::optional<ObjectTransform> transform)
 {
+	const std::lock_guard lock(_mutex);
 	if (!_settings.enabled)
 	{
 		return ts4::MakeError("the mod is off in its settings");
@@ -158,6 +190,7 @@ ts4::Result<void> TvRuntime::Play(std::uint64_t objectId, std::string_view url, 
 
 bool TvRuntime::Stop(std::uint64_t objectId)
 {
+	const std::lock_guard lock(_mutex);
 	auto actions = _sessions.Stop(objectId);
 	if (!actions)
 	{
@@ -169,11 +202,13 @@ bool TvRuntime::Stop(std::uint64_t objectId)
 
 void TvRuntime::StopAll()
 {
+	const std::lock_guard lock(_mutex);
 	Run(_sessions.StopAll());
 }
 
 void TvRuntime::SetSpeed(ClockSpeedMode mode, bool superSpeed, double scale)
 {
+	const std::lock_guard lock(_mutex);
 	_speedScale = scale;
 	Run(_sessions.SetSpeed(mode, superSpeed));
 	UpdateAudio();
@@ -181,12 +216,14 @@ void TvRuntime::SetSpeed(ClockSpeedMode mode, bool superSpeed, double scale)
 
 void TvRuntime::SetTransform(std::uint64_t objectId, const ObjectTransform& transform)
 {
+	const std::lock_guard lock(_mutex);
 	_sessions.SetTransform(objectId, transform);
 	UpdateAudio();
 }
 
 void TvRuntime::SetScreenKey(std::uint64_t objectId, const ScreenKey& key)
 {
+	const std::lock_guard lock(_mutex);
 	_sessions.SetScreenKey(objectId, key);
 }
 
@@ -260,6 +297,12 @@ void TvRuntime::OnEvent(const host::HostEvent& event)
 
 void TvRuntime::Pump()
 {
+	const std::lock_guard lock(_mutex);
+	PumpLocked();
+}
+
+void TvRuntime::PumpLocked()
+{
 	_lastPump = std::chrono::steady_clock::now();
 	if (!_client)
 	{
@@ -293,6 +336,7 @@ void TvRuntime::UpdateAudio()
 
 std::shared_ptr<MappedVideo> TvRuntime::VideoOf(std::uint64_t objectId)
 {
+	const std::lock_guard lock(_mutex);
 	const auto* session = _sessions.Find(objectId);
 	if (session == nullptr || !_client)
 	{
@@ -303,6 +347,12 @@ std::shared_ptr<MappedVideo> TvRuntime::VideoOf(std::uint64_t objectId)
 
 void TvRuntime::SetListenerPose(const AudioPose& pose)
 {
+	const std::lock_guard lock(_mutex);
+	SetListenerPoseLocked(pose);
+}
+
+void TvRuntime::SetListenerPoseLocked(const AudioPose& pose)
+{
 	_listener = pose;
 	if (_audio)
 	{
@@ -312,6 +362,7 @@ void TvRuntime::SetListenerPose(const AudioPose& pose)
 
 void TvRuntime::OnPlaylistMessage(std::uintptr_t message)
 {
+	const std::lock_guard lock(_mutex);
 	_pendingObject.reset();
 	if (_channel)
 	{
@@ -321,11 +372,13 @@ void TvRuntime::OnPlaylistMessage(std::uintptr_t message)
 
 void TvRuntime::OnPlaylistMessageDone()
 {
+	const std::lock_guard lock(_mutex);
 	_pendingObject.reset();
 }
 
 void TvRuntime::OnSetPlaylist(std::uintptr_t component)
 {
+	const std::lock_guard lock(_mutex);
 	if (!_channel || !_pendingObject)
 	{
 		return;
@@ -340,54 +393,75 @@ void TvRuntime::OnSetPlaylist(std::uintptr_t component)
 
 void TvRuntime::OnRenderFrame(std::uintptr_t renderer, std::uintptr_t frame)
 {
-	++_renderCalls;
-	if (std::chrono::steady_clock::now() - _lastPump >= k_PumpInterval)
+	// Under the lock: find the video of this channel. The frame copy then occurs without the lock, so that a call of
+	// the bridge on the thread of the game Python never waits for a copy.
+	std::shared_ptr<MappedVideo> video;
+	std::int32_t helperId = 0;
+	game_layout::RendererLayout layout;
+	ScaleFilter filter {};
 	{
-		Pump();
+		const std::lock_guard lock(_mutex);
+		++_renderCalls;
+		if (std::chrono::steady_clock::now() - _lastPump >= k_PumpInterval)
+		{
+			PumpLocked();
+		}
+		if (!_renderer || !_client || _sessions.Sessions().empty())
+		{
+			return;
+		}
+		const auto channel = ReadRendererChannel(*_memory, renderer, *_renderer);
+		std::optional<ScreenKey> clipKey;
+		if (_channel)
+		{
+			clipKey = ReadChannelClipKey(*_memory, channel, *_channel);
+		}
+		auto* session = _sessions.MatchChannel(channel, clipKey);
+		if (session == nullptr || session->state == SessionState::Failed)
+		{
+			return;
+		}
+		video = _client->Video(session->helperId);
+		if (!video)
+		{
+			return;
+		}
+		helperId = session->helperId;
+		layout = *_renderer;
+		filter = _settings.scaleFilter;
 	}
-	if (!_renderer || !_client || _sessions.Sessions().empty())
-	{
-		return;
-	}
-	const auto channel = ReadRendererChannel(*_memory, renderer, *_renderer);
-	std::optional<ScreenKey> clipKey;
-	if (_channel)
-	{
-		clipKey = ReadChannelClipKey(*_memory, channel, *_channel);
-	}
-	auto* session = _sessions.MatchChannel(channel, clipKey);
-	if (session == nullptr || session->state == SessionState::Failed)
-	{
-		return;
-	}
-	auto video = _client->Video(session->helperId);
-	if (!video)
-	{
-		return;
-	}
+	// Only this thread reads the frames of the helper, so the triple buffer needs no lock.
 	auto& frames = video->Frames();
 	frames.TakeNewest();
 	if (frames.FrontFrameNumber() == 0)
 	{
 		return;
 	}
-	const auto target = ReadGameFrame(*_memory, frame, *_renderer);
+	const auto target = ReadGameFrame(*_memory, frame, layout);
 	if (!target)
 	{
-		LogOnce(std::format("frame {}", session->helperId), TS4_LOG_WARN,
-		        std::format("video {}: the frame of the game is not correct; the mod does not write it", session->helperId));
+		const std::lock_guard lock(_mutex);
+		LogOnce(std::format("frame {}", helperId), TS4_LOG_WARN,
+		        std::format("video {}: the frame of the game is not correct; the mod does not write it", helperId));
 		return;
 	}
-	const auto written = WriteI420Frame(frames.FrontPlanes(), *target, _settings.scaleFilter, frames.Range());
+	const auto written = WriteI420Frame(frames.FrontPlanes(), *target, filter, frames.Range());
+	const std::lock_guard lock(_mutex);
 	if (!written)
 	{
-		LogOnce(std::format("write {}", session->helperId), TS4_LOG_WARN,
-		        std::format("video {}: {}", session->helperId, written.GetError().message));
+		LogOnce(std::format("write {}", helperId), TS4_LOG_WARN,
+		        std::format("video {}: {}", helperId, written.GetError().message));
+		return;
+	}
+	// The video can stop while the lock is free. Then the session is not there, and the count does not change.
+	auto* session = _sessions.FindHelper(helperId);
+	if (session == nullptr)
+	{
 		return;
 	}
 	if (session->framesWritten == 0)
 	{
-		Log(TS4_LOG_INFO, std::format("video {}: the first frame on the screen ({}x{} into {}x{}, {})", session->helperId,
+		Log(TS4_LOG_INFO, std::format("video {}: the first frame on the screen ({}x{} into {}x{}, {})", helperId,
 		                              frames.Width(), frames.Height(), target->planes[0].width, target->planes[0].height,
 		                              *written == FrameWrite::Copy ? "copy" : "letterbox"));
 	}
@@ -397,9 +471,10 @@ void TvRuntime::OnRenderFrame(std::uintptr_t renderer, std::uintptr_t frame)
 
 void TvRuntime::OnListener(std::uintptr_t state)
 {
+	const std::lock_guard lock(_mutex);
 	if (std::chrono::steady_clock::now() - _lastPump >= k_PumpInterval)
 	{
-		Pump();
+		PumpLocked();
 	}
 	if (!_listenerOffset)
 	{
@@ -416,12 +491,13 @@ void TvRuntime::OnListener(std::uintptr_t state)
 		LogOnce("listener", TS4_LOG_WARN, "the camera matrix of the listener is not a rotation and a position");
 		return;
 	}
-	SetListenerPose(*pose);
+	SetListenerPoseLocked(*pose);
 }
 
 nlohmann::json TvRuntime::Status()
 {
-	Pump();
+	const std::lock_guard lock(_mutex);
+	PumpLocked();
 	auto status = _sessions.Status();
 	status["enabled"] = _settings.enabled;
 	status["speedScale"] = _speedScale;

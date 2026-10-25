@@ -5,8 +5,8 @@ helper `youtube_tv_host.exe` plays the video (`docs/host.md`). The script mod gi
 positions. This file tells the parts, the threads, the data flow and the open points. The research is in
 `docs/research/tv/` (`native.md`, `python.md`, `offsets.md`).
 
-Status (2026-10-25, branch `mods/tv-dll`): built, unit-tested, and tested outside the game with the probe. Not yet
-run in the game.
+Status (2026-10-25): built, unit-tested, tested outside the game with the probe, and in the first game test (branch
+`test/first-game-run`).
 
 ## The parts
 
@@ -59,15 +59,31 @@ See "Which TV" in `docs/research/tv/native.md`. The order of the match in `Sessi
 
 ## The threads
 
+The game has two threads that the mod uses (the first game test, 2026-10-25). The client main thread is the thread
+of the tick of the extender: the extender runs the function callbacks, the tasks and the queries there. The game
+Python runs on a different thread (the simulation thread), and so do the cheat commands and the bridge calls of the
+script mod. In the test, the bridge refused `YoutubeTvPlay` with "the call is not on the main thread of the game".
+
 | Thread | What it does |
 |---|---|
-| Main thread of the game | All callbacks, the queries, the bridge calls, the sessions, the frame writes, the audio positions (`AudioEngine::Update`). |
-| Reader of the helper | Reads the events of the helper, maps the shared memory of `opened`, and queues the events. The main thread takes them in `Pump` (in the callbacks of each frame, at most every 4 ms, and in each bridge call). |
+| Client main thread (the tick of the extender) | The callbacks (`RenderFrame`, the playlist, the listener), the queries, the frame writes, the audio positions (`AudioEngine::Update`). Only this thread reads or writes the memory of the game. |
+| Thread of the game Python (simulation) | The bridge calls of the script mod (the C interface and the module `ts4_youtube_tv_native`). They change only the sessions and the settings of the runtime. |
+| Reader of the helper | Reads the events of the helper, maps the shared memory of `opened`, and queues the events. `Pump` takes them (in the callbacks of each frame, at most every 4 ms, and in `Status`). |
+| Writer of the helper | Writes the commands of the queue (`LineQueue`) to the pipe of the helper. A full pipe stops only this thread. |
 | Thread of the audio | Owns XAudio2 in the multithreaded apartment of COM (no change to the COM state of a game thread). Every 5 ms it reads each audio ring into the queue of its voice (three buffers of 10 ms). It removes old audio when the ring has more than 200 ms. |
 | Threads of XAudio2 | The audio output of Windows. |
 
-The bridge refuses a call that is not on the main thread. The extender can call `Ts4ModInit` on its start thread, so
-the mod takes the main thread from its first task (`postTask`). Until that task runs, the bridge refuses each call.
+The rules:
+
+- The bridge keeps the thread of its first call as the thread of the game Python (`ThreadGate`), and writes it to the
+  log one time. It refuses calls on other threads, with one log line.
+- `TvRuntime` has one lock. Each public function takes it. The lock covers only short work on the state of the
+  runtime: no wait for the helper (commands go to the queue of the writer), and no copy of a frame (`OnRenderFrame`
+  finds the video under the lock, copies the frame without the lock, then takes the lock again to count it).
+- The start of the helper (`CreateProcessW`) and of the audio engine occur under the lock, one time, in the first
+  `Play`.
+- The mod takes the client main thread from its first task (`postTask`), because the extender can call `Ts4ModInit`
+  on its start thread. The task also adds the Python module.
 
 **Plan B if `RenderFrame` is not on the main thread.** The extender runs a callback only on the main thread; on
 another thread only the original runs. Then the frames never change and `youtube_tv.status` shows `renderCalls` 0
