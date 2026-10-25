@@ -2,18 +2,18 @@
  * Copyright (c) 2026 Sims 4 mods developers
  *****************************************************************************/
 
-#include "TemplateSettings.h"
+#include "YoutubeTvSettings.h"
 
-namespace ts4_mod::template_mod
+namespace ts4_mod::youtube_tv
 {
 
-ts4::Result<TemplateSettings> ParseTemplateSettings(const nlohmann::json& json)
+ts4::Result<YoutubeTvSettings> ParseYoutubeTvSettings(const nlohmann::json& json)
 {
 	if (!json.is_object())
 	{
 		return ts4::MakeError("the settings are not a JSON object");
 	}
-	TemplateSettings settings;
+	YoutubeTvSettings settings;
 	if (const auto field = json.find("enabled"); field != json.end())
 	{
 		if (!field->is_boolean())
@@ -39,23 +39,23 @@ ts4::Result<TemplateSettings> ParseTemplateSettings(const nlohmann::json& json)
 	return settings;
 }
 
-ts4::Result<TemplateSettings> ParseTemplateSettingsText(std::string_view text)
+ts4::Result<YoutubeTvSettings> ParseYoutubeTvSettingsText(std::string_view text)
 {
 	if (text.find_first_not_of(" \t\r\n") == std::string_view::npos)
 	{
-		return TemplateSettings {};
+		return YoutubeTvSettings {};
 	}
 	const auto json = nlohmann::json::parse(text, nullptr, false);
 	if (json.is_discarded())
 	{
 		return ts4::MakeError("the settings file is not correct JSON");
 	}
-	return ParseTemplateSettings(json);
+	return ParseYoutubeTvSettings(json);
 }
 
-nlohmann::json TemplateSettingsJson(const TemplateSettings& settings)
+nlohmann::json YoutubeTvSettingsJson(const YoutubeTvSettings& settings)
 {
 	return {{"enabled", settings.enabled}, {"strength", settings.strength}};
 }
 
-} // namespace ts4_mod::template_mod
+} // namespace ts4_mod::youtube_tv

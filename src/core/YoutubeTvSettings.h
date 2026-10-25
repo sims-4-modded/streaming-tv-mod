@@ -9,29 +9,29 @@
 #include <common/Result.h>
 #include <nlohmann/json.hpp>
 
-namespace ts4_mod::template_mod
+namespace ts4_mod::youtube_tv
 {
 
-/// The settings of the template mod: the file `mod_template.json` in the settings folder of the extender. A missing
+/// The settings of the YouTube TV: the file `youtube_tv.json` in the settings folder of the extender. A missing
 /// field keeps its default.
-struct TemplateSettings
+struct YoutubeTvSettings
 {
 	bool enabled = true;
 	double strength = 1.0; ///< An example of a number with a range, from 0 to 10.
 
-	[[nodiscard]] bool operator==(const TemplateSettings&) const = default;
+	[[nodiscard]] bool operator==(const YoutubeTvSettings&) const = default;
 };
 
 constexpr double k_MinStrength = 0.0;
 constexpr double k_MaxStrength = 10.0;
 
 /// Read the settings from a JSON object. The result is an error for a field of the wrong type or out of its range.
-[[nodiscard]] ts4::Result<TemplateSettings> ParseTemplateSettings(const nlohmann::json& json);
+[[nodiscard]] ts4::Result<YoutubeTvSettings> ParseYoutubeTvSettings(const nlohmann::json& json);
 
 /// Read the settings from the text of the settings file. Empty text gives the defaults.
-[[nodiscard]] ts4::Result<TemplateSettings> ParseTemplateSettingsText(std::string_view text);
+[[nodiscard]] ts4::Result<YoutubeTvSettings> ParseYoutubeTvSettingsText(std::string_view text);
 
 /// The settings as a JSON object, with each field.
-[[nodiscard]] nlohmann::json TemplateSettingsJson(const TemplateSettings& settings);
+[[nodiscard]] nlohmann::json YoutubeTvSettingsJson(const YoutubeTvSettings& settings);
 
-} // namespace ts4_mod::template_mod
+} // namespace ts4_mod::youtube_tv

@@ -2,7 +2,7 @@
  * Copyright (c) 2026 Sims 4 mods developers
  *****************************************************************************/
 
-// The entry points of the template mod DLL. The extender loads the DLL from its folder of DLL mods and calls these
+// The entry points of the YouTube TV DLL. The extender loads the DLL from its folder of DLL mods and calls these
 // functions on the main thread. No exception goes out of these functions.
 
 #include <exception>
@@ -11,17 +11,17 @@
 #include <mod_api/Ts4ModApi.h>
 #include <mod_sdk/ModHost.h>
 
-#include "game/TemplateMod.h"
+#include "game/YoutubeTvMod.h"
 
 namespace
 {
 
-constexpr const char* k_ModId = "mod_template";
-constexpr const char* k_ModName = "Template mod";
+constexpr const char* k_ModId = "youtube_tv";
+constexpr const char* k_ModName = "YouTube TV";
 constexpr const char* k_ModVersion = "0.1.0";
 
 /// The mod. It lives from `Ts4ModInit` to `Ts4ModShutdown`.
-std::unique_ptr<ts4_mod::template_mod::TemplateMod> s_mod;
+std::unique_ptr<ts4_mod::youtube_tv::YoutubeTvMod> s_mod;
 
 } // namespace
 
@@ -47,7 +47,7 @@ extern "C" __declspec(dllexport) uint32_t Ts4ModInit(const Ts4HostApi* api, uint
 			return 0;
 		}
 		// The mod writes the reason to the log if it cannot start.
-		auto mod = ts4_mod::template_mod::TemplateMod::Start(std::move(*host));
+		auto mod = ts4_mod::youtube_tv::YoutubeTvMod::Start(std::move(*host));
 		if (!mod)
 		{
 			return 0;
