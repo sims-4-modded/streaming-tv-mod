@@ -65,10 +65,28 @@ target_link_libraries(ts4_youtube_tv_core PUBLIC ts4_common ts4_mod_core nlohman
 ts4_set_warnings(ts4_youtube_tv_core)
 
 if (WIN32)
-  add_library(youtube_tv SHARED src/game/YoutubeTvMod.cpp src/game/YoutubeTvMod.h src/game/ModMain.cpp)
+  # The parts that use Windows: the helper client, the 3D audio, the memory of the process and the runtime. The DLL
+  # and the probe tool use them.
+  add_library(
+    ts4_youtube_tv_game STATIC
+    src/game/AudioEngine.h
+    src/game/HostClient.h
+    src/game/ProcessMemory.h
+    src/game/TvRuntime.h
+    src/game/WinHandle.h
+    src/game/AudioEngine.cpp
+    src/game/HostClient.cpp
+    src/game/ProcessMemory.cpp
+    src/game/TvRuntime.cpp
+  )
+  target_include_directories(ts4_youtube_tv_game PUBLIC src)
+  target_compile_definitions(ts4_youtube_tv_game PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_link_libraries(ts4_youtube_tv_game PUBLIC ts4_youtube_tv_core ts4_mod_api)
+  ts4_set_warnings(ts4_youtube_tv_game)
+
+  add_library(youtube_tv SHARED src/game/Bridge.cpp src/game/YoutubeTvMod.cpp src/game/YoutubeTvMod.h src/game/ModMain.cpp)
   target_include_directories(youtube_tv PRIVATE src)
-  target_compile_definitions(youtube_tv PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
-  target_link_libraries(youtube_tv PRIVATE ts4_youtube_tv_core ts4_mod_sdk)
+  target_link_libraries(youtube_tv PRIVATE ts4_youtube_tv_game ts4_mod_sdk ts4_mod_game)
   ts4_set_warnings(youtube_tv)
 
   # The helper process with CEF. It needs the CEF distribution of cmake/Cef.cmake; without it the build skips it.

@@ -25,6 +25,11 @@ std::unique_ptr<ts4_mod::youtube_tv::YoutubeTvMod> s_mod;
 
 } // namespace
 
+ts4_mod::youtube_tv::YoutubeTvMod* ts4_mod::youtube_tv::ActiveYoutubeTvMod()
+{
+	return s_mod.get();
+}
+
 extern "C" __declspec(dllexport) uint32_t Ts4ModApiVersion()
 {
 	return TS4_MOD_API_VERSION;
