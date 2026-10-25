@@ -180,7 +180,42 @@ What our XAudio2 + X3DAudio player needs from the game:
 3. The clock speed (from `VideoChannel::Update`, or from Python) for mute and pause.
 4. The game volume settings (not researched).
 
+## Which TV: the link from a channel to its object
+
+Lane `tv-dll`, 2026-10-25 (catalogue entries `0x00227300`, `0x017C3210`, `0x017C22E0`, `0x017C4C30`, comments by
+`tv-dll`).
+
+- The channel has no pointer back to its component or object that we found. The constructor (`0x017C3360`) keeps
+  the channel id (+0x18), the player, the renderer, the render target and the clip state, but no owner.
+- The only reverse link in the game is the hash map of `VideoObjectManager` (`0x017C22E0`): channel id ->
+  VideoComponent (buckets at manager +0x10, count at +0x18, node `{u32 id; +0x8 component; +0x10 next}`), and
+  component +0x8 is the client object. A mod would need the instance of the manager and the object id field of the
+  client object. Not used.
+- **The link that the mod uses:** `HandleVideoSetPlaylist` (`0x00227300`) reads the object id (op +0x28) and calls
+  `VideoComponent::SetPlaylist` (`0x017C3210`) with the component of that object. Component +0x20 is the channel, the
+  same pointer as renderer +0xA0 in `RenderFrame`. So:
+  1. A before-callback on `HandleVideoSetPlaylist` (1 argument) keeps the object id of the message.
+  2. A before-callback on `SetPlaylist` (1 argument) reads the channel of the component and links it to that
+     object id.
+  3. An after-callback on `HandleVideoSetPlaylist` clears the pending id, so that a `SetPlaylist` from another
+     path is never linked to a wrong object.
+  4. The `RenderFrame` callback reads renderer +0xA0 and finds the session of that channel.
+  The script mod must give a playlist to our TV (it must anyway: the channel shows frames only while it plays a
+  clip), and each playlist links the channel again. When the game frees a channel and makes a new one at the same
+  address, the next playlist of the new owner moves the link.
+- **The fallback:** the key of the clip that the channel plays (channel +0xA0, 16 bytes, from `0x017C4E4C`). The
+  script mod gives the key that it put on the TV (`YoutubeTvSetScreenKey`, before `YoutubeTvPlay`; by default
+  `TS4_TV_Yulelog`, type `0x376840D7`, group 0, instance `0x0D432B7F5C14E35D`). If the channel of a frame is not
+  linked to an object with a video, the mod takes the object whose screen key is the clip key of the channel, and
+  links the channel to it. Two TVs with the same clip key and no playlist link would both match the first session;
+  the first link wins. We cannot make VP6 clips ourselves, so the script mod uses a clip of the game.
+- The order in the mod: the channel link, then the clip key, then the session of "any TV" (an inspector test only).
+
 ## What is still unknown
+
+- (tv-dll) The thread of `HandleVideoSetPlaylist`, `SetPlaylist`, `RenderFrame` and `UpdateListenerFromCamera`. The
+  callbacks of the extender run only on the main thread; on another thread only the original runs.
+- (tv-dll) That op +0x28 is the u64 object id that game Python uses (the lookup `0x00162030` takes a pointer to it).
 
 - The thread of `RenderFrame` (the main client thread is probable) and the thread that calls `Present`.
 - If VP6 keeps its reference frames in the frame planes. The strings `VideoDecoder_Vp6::TransferData` and the
