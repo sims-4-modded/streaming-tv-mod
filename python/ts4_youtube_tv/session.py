@@ -6,7 +6,8 @@
 
 A session starts when the player gives a URL. The mod pushes the watch interaction of the game on the Sim (watch.py),
 tells the DLL mod the URL and the transform of the TV, and silences the sound of the game channel on that TV
-(channel_audio.py). The watch interaction puts the TV on its channel. The game then sends the playlist of the channel,
+(channel_audio.py). It also stops the mute and the distortion of the client on that TV at the speeds 2 and 3
+(speed_override.py), and writes the old values back when the session stops. The watch interaction puts the TV on its channel. The game then sends the playlist of the channel,
 and the DLL mod links the channel of the TV to its object id and shows the frames of the video in place of the frames
 of the channel.
 
@@ -37,6 +38,7 @@ import functools
 from . import channel_audio
 from . import log
 from . import native
+from . import speed_override
 from . import tv
 from . import watch
 
@@ -106,7 +108,7 @@ def start(obj, url, sim=None):
             return False, "this object has no video screen"
         object_id = obj.id
         if object_id in _sessions:
-            _stop_session(object_id, "a new video", cancel=False, obj=obj)
+            _stop_session(object_id, "a new video", cancel=False, obj=obj, resend=False)
         interaction, error = watch.push_watch(sim, obj)
         if interaction is None:
             return False, error
@@ -120,6 +122,7 @@ def start(obj, url, sim=None):
         session.finishing_callback = _make_finishing_callback(object_id)
         interaction.register_on_finishing_callback(session.finishing_callback)
         channel_audio.silence(obj)
+        speed_override.apply(obj)
         register = getattr(obj, "register_on_location_changed", None)
         if register is not None:
             session.location_callback = _make_location_callback(object_id)
@@ -142,7 +145,8 @@ def _cancel(interaction, reason):
         log.exception("session: the cancel of the watch interaction failed")
 
 
-def _stop_session(object_id, reason, cancel, obj=None):
+def _stop_session(object_id, reason, cancel, obj=None, resend=True):
+    """Stop the session of the TV. Set resend to False if the game must not send the playlist of the TV again."""
     session = _sessions.pop(object_id, None)
     if session is None:
         return False
@@ -153,6 +157,7 @@ def _stop_session(object_id, reason, cancel, obj=None):
             manager = services.object_manager()
             obj = manager.get(object_id) if manager is not None else None
         channel_audio.release(obj, object_id)
+        speed_override.restore(object_id, obj, resend=resend)
         if session.interaction is not None and session.finishing_callback is not None:
             unregister = getattr(session.interaction, "unregister_on_finishing_callback", None)
             if unregister is not None:
@@ -178,11 +183,12 @@ def stop(object_id, reason="the player stopped it"):
         return False
 
 
-def stop_all(reason, cancel=False):
+def stop_all(reason, cancel=False, resend=True):
     """Stop every session. The DLL mod also stops every video."""
     try:
         for object_id in list(_sessions):
-            _stop_session(object_id, reason, cancel=cancel)
+            _stop_session(object_id, reason, cancel=cancel, resend=resend)
+        speed_override.restore_all(resend=resend)
         native.stop_all()
     except Exception:  # noqa: BLE001
         log.exception("session: the stop of all sessions failed")
@@ -223,7 +229,8 @@ def _wrap_on_remove(original):
             owner = getattr(self, "owner", None)
             object_id = getattr(owner, "id", None)
             if object_id in _sessions:
-                _stop_session(object_id, "the game removed the Video component", cancel=False, obj=owner)
+                _stop_session(object_id, "the game removed the Video component", cancel=False, obj=owner,
+                              resend=False)
         except Exception:  # noqa: BLE001
             log.exception("session: the wrap of on_remove failed")
         return original(self, *args, **kwargs)
@@ -235,7 +242,7 @@ def _wrap_on_teardown(original):
     @functools.wraps(original)
     def wrapper(self, *args, **kwargs):
         try:
-            stop_all("the zone unloads")
+            stop_all("the zone unloads", resend=False)
         except Exception:  # noqa: BLE001
             log.exception("session: the wrap of Zone.on_teardown failed")
         return original(self, *args, **kwargs)
@@ -275,3 +282,4 @@ def clear():
     """Forget every session without a call to the game. The tests use this function."""
     _sessions.clear()
     channel_audio.clear()
+    speed_override.clear()

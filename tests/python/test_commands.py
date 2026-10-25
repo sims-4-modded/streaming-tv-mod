@@ -72,8 +72,9 @@ class CommandTest(unittest.TestCase):
         self.assertIn("watch_affordances=tv_WatchNews, tv_WatchAction, tv_WatchMusic", text)
         self.assertTrue(command("youtube_tv.info")(_connection=1))
         text = "\n".join(sims4.commands.outputs)
-        self.assertIn("mute_speed = 3", text)
-        self.assertIn("distortion_speed = 3", text)
+        # The session sets the speeds of the Video component to the super speed.
+        self.assertIn("mute_speed = <ClockSpeedMode.SUPER_SPEED3: 5>", text)
+        self.assertIn("distortion_speed = <ClockSpeedMode.SUPER_SPEED3: 5>", text)
         self.assertIn("session = True", text)
 
     def test_a_command_never_raises(self):

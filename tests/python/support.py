@@ -104,13 +104,30 @@ class FakeObject:
         self.id = FakeObject._next_id
         self.is_sim = False
         self._tags = set(tags)
-        self.video_playlist = None
+        self._video_playlist = None
+        # The messages of the playlist that the fake distributor sent to the client.
+        self.sent_playlists = []
         self.position = Vector(*position)
         self.orientation = Vector(0.0, 0.5, 0.0, 0.5)
         self.state_component = FakeStateComponent(usable)
         self.location_callbacks = []
         self._components = {types.VIDEO_COMPONENT: VideoComponent(self)} if video else {}
         self.affordances = list(affordances)
+
+    @property
+    def video_playlist(self):
+        return self._video_playlist
+
+    @video_playlist.setter
+    def video_playlist(self, playlist):
+        """Keep the playlist and send its message, as the distributor field of the game does."""
+        self._video_playlist = playlist
+        if playlist is not None:
+            self.sent_playlists.append(playlist.get_protocol_msg())
+
+    def _resend_video_playlist(self):
+        if self._video_playlist is not None:
+            self.sent_playlists.append(self._video_playlist.get_protocol_msg())
 
     def super_affordances(self, context=None):
         return iter(self.affordances)

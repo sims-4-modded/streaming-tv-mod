@@ -279,8 +279,8 @@ It returns 0 if all checks pass, 1 if a check fails, 77 if the helper or the aud
 - The thread of each hooked function (plan B above).
 - The axes of the game and the layout of the camera matrix (settings until a game test).
 - That op +0x28 of `HandleVideoSetPlaylist` is the u64 object id of game Python.
-- The values of `mute_speed` and `distortion_speed` on the TV tunings. The bridge of version 1 has no argument for
-  them; a version 2 could add `YoutubeTvSetMuteSpeed(objectId, speed)`.
+- The values of `mute_speed` and `distortion_speed` on the TV tunings. The script mod sets both to `SUPER_SPEED3` on
+  the TV of a session (`script-mod.md`, "The speed override"), so the bridge needs no argument for them.
 - The YUV matrix and range of the shader `VideoDecode` (BT.601 and the limited range are the defaults).
 - If VP6 keeps reference frames in the planes of the frame (then a write could show in the next frame of the game
   clip; the mod writes each frame, so it is probably not visible).

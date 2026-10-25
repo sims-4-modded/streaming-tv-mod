@@ -25,6 +25,7 @@ The sources are in `python/ts4_youtube_tv` and `tuning`. The research of the gam
 | `tv.py` | The test for a TV (the tag `Func_TV` or `Func_Television`, and a Video component), the broken test (`state_component.is_object_usable()`), the transform, the nearest TV and the key of a clip. |
 | `watch.py` | Finds the watch interaction of the game on the TV (a subclass of `WatchSuperInteraction`) and pushes it on the Sim. |
 | `channel_audio.py` | Silences the sound of the game channel on a TV that shows a video of the mod. |
+| `speed_override.py` | Sets `mute_speed` and `distortion_speed` of the Video component of the TV of a session to `SUPER_SPEED3`, and writes the old values back when the session stops. |
 | `interaction.py` | `WatchYoutubeVideoInteraction`, a subclass of `ImmediateSuperInteraction`. Its test passes only for a TV that is not broken, when the bridge is ready and the mod is on. It shows the URL dialog. |
 | `dialogs.py` | The URL dialog (`UiDialogTextInputOkCancel` from its factory default) and the error notification (`UiDialogNotification`). All texts are raw text. |
 | `injection.py` | Adds the interaction to each object tuning class with a Video component, when the OBJECT instance manager completes its load. |
@@ -73,6 +74,8 @@ Each wrap keeps the original function and calls it. A second install does not wr
 | `Sim.push_super_affordance` | Pushes the watch interaction (`InteractionContext` with `SOURCE_SCRIPT_WITH_USER_INTENT`, `Priority.High`). |
 | `Interaction.register_on_finishing_callback` | The end of the watch interaction stops the session. |
 | `Interaction.cancel` | `youtube_tv.stop` and a refusal of the DLL mod cancel the watch interaction (`FinishingType.USER_CANCEL`). |
+| `VideoComponent.mute_speed`, `VideoComponent.distortion_speed` (values of the component of one TV, not of the class) | At the start of a session, set to `SUPER_SPEED3`. At the stop, the old values come back. |
+| `ClientObjectMixin._resend_video_playlist` | Sends the current playlist again after the mod changes its `mute_speed` and `distortion_speed` (at the start, and at the stop except at the zone unload and the removal of the TV). |
 | `objects.components.state.StateComponentManagedDistributables.apply` | Calls the original first. Then, if the change is `audio_state` and the target is a TV that shows a video of the mod, the mod stops the new sound. |
 
 The speed values:
@@ -84,9 +87,31 @@ The speed values:
 - `super_speed`: 1 if the mode is SUPER_SPEED3, else 0.
 
 The game applies its own TV effect at a high speed. The client reads `mute_speed` and `distortion_speed` of the
-playlist, and the watch interaction of the game makes the playlist through the channel state. Thus the TV gets the
-effect of its own tuning. The first game test read `mute_speed` SPEED2 and `distortion_speed` SPEED2 on
-`object_tvWallDS2x1_01`: the game distorts the screen and mutes the channel already at the speed 2.
+playlist, and the watch interaction of the game makes the playlist through the channel state. The first game test read
+`mute_speed` SPEED2 and `distortion_speed` SPEED2 on `object_tvWallDS2x1_01`: the game distorts the screen and mutes
+the channel already at the speed 2.
+
+## The speed override
+
+The decision "Speed 2 and 3": the video plays at the rate 2 with its audio at the speeds 2 and 3, and only the super
+speed gets the effect of the game. `speed_override.py` does this:
+
+- `VideoComponent.set_video_clips` makes each new `VideoPlaylist` from the values `self.mute_speed` and
+  `self.distortion_speed` of the component (the tuning gives them to `__init__`; each object has its own component).
+  `VideoSetPlaylistOp` reads the values of the playlist. Thus a change of the two values on the component of one TV
+  goes into each new playlist of that TV only, with no wrap of the op or of the field.
+- The current playlist keeps its own copy, and `add_video_clips` adds to it. At the start of the session, the mod also
+  changes the two values of the current playlist and calls `_resend_video_playlist` of the TV (the call that the game
+  uses after `add_video_clips`). The client then gets the same playlist (same version) with `SUPER_SPEED3`.
+- At each stop of the session (the end of the watch, `youtube_tv.stop`, a playlist after the end of the watch, a new
+  video, the removal of the TV, the zone unload), the old values go back to the component and to the current playlist.
+  The mod sends the playlist again, except at the zone unload and the removal of the TV. A new video on the same TV
+  keeps the old values of the first session and sends the playlist one time.
+- `youtube_tv.info` shows `SUPER_SPEED3` while a session runs; the log line "speed_override: ... (old values: ...)"
+  has the tuned values.
+
+At the super speed, the DLL mod pauses the video, keeps the last frame and stops the audio (`design.md`, the speed
+policy), and the client shows its distortion and mutes.
 
 A note on `set_video_clips`: the game also gives the function to the object (`obj.set_video_clips`). That copy calls
 the original function of the component, not the wrap. The research found no caller of that copy. The state changes of
@@ -234,7 +259,6 @@ Do the pie menu and the dialog by hand (not with synthetic input).
 
 1. Whether the clip of a channel plays its own audio in the client (then the DLL mod mutes our channel).
 2. Whether the client of the game limits the text box to fewer than 200 characters.
-3. The game distorts and mutes the TV at the speed 2 (`mute_speed` and `distortion_speed` SPEED2). The speed policy of
-   the DLL mod plays at the rate 2 with audio at that speed. The merger must decide if the video mutes at the speed 2.
+3. (Decided: "Speed 2 and 3", see "The speed override".) The game distorted and muted the TV at the speed 2.
 4. The language codes of the string tables: the game folder has only `Strings_ENG_US.package`, so the other codes come
    from the community list, not from the game. A wrong code has no effect, and the raw text name does not need them.
