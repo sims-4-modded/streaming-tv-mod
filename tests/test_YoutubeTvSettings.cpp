@@ -5,37 +5,55 @@
 #include <core/YoutubeTvSettings.h>
 #include <gtest/gtest.h>
 
-using ts4_mod::youtube_tv::ParseYoutubeTvSettings;
-using ts4_mod::youtube_tv::ParseYoutubeTvSettingsText;
-using ts4_mod::youtube_tv::YoutubeTvSettings;
-using ts4_mod::youtube_tv::YoutubeTvSettingsJson;
+namespace
+{
+
+using namespace ts4_mod::youtube_tv;
 
 TEST(YoutubeTvSettings, EmptyTextGivesTheDefaults)
 {
 	const auto settings = ParseYoutubeTvSettingsText("  \n");
 	ASSERT_TRUE(settings);
 	EXPECT_EQ(*settings, YoutubeTvSettings {});
+	const auto empty = ParseYoutubeTvSettingsText("{}");
+	ASSERT_TRUE(empty);
+	EXPECT_EQ(*empty, YoutubeTvSettings {});
 }
 
 TEST(YoutubeTvSettings, AMissingFieldKeepsItsDefault)
 {
-	const auto settings = ParseYoutubeTvSettingsText(R"({"strength": 2.5})");
+	const auto settings = ParseYoutubeTvSettingsText(R"({"volume": 0.5, "matrix": "bt709", "muteLevel": 3})");
 	ASSERT_TRUE(settings) << settings.GetError().message;
 	EXPECT_TRUE(settings->enabled);
-	EXPECT_DOUBLE_EQ(settings->strength, 2.5);
+	EXPECT_DOUBLE_EQ(settings->volume, 0.5);
+	EXPECT_EQ(settings->matrix, YuvMatrix::Bt709);
+	EXPECT_EQ(settings->speed.muteLevel, 3U);
+	EXPECT_EQ(settings->width, 640U);
 }
 
 TEST(YoutubeTvSettings, RefusesAWrongType)
 {
 	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"enabled": 1})"));
-	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"strength": "high"})"));
+	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"volume": "high"})"));
+	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"helperPath": 3})"));
+	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"maxSessions": 1.5})"));
+	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"modelFront": [0, 1]})"));
 	EXPECT_FALSE(ParseYoutubeTvSettingsText("[]"));
 }
 
-TEST(YoutubeTvSettings, RefusesAStrengthOutOfRange)
+TEST(YoutubeTvSettings, RefusesAValueOutOfRange)
 {
-	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"strength": -1})"));
-	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"strength": 10.5})"));
+	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"volume": -0.1})"));
+	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"volume": 1.1})"));
+	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"maxSessions": 0})"));
+	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"maxSessions": -1})"));
+	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"width": 4000})"));
+	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"speed3Rate": 3})"));
+	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"muteLevel": 7})"));
+	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"range": "wide"})"));
+	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"cameraMatrix": "rows"})"));
+	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"modelFront": [0, 0, 0]})"));
+	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"modelFront": [0, 1, 0]})"));
 }
 
 TEST(YoutubeTvSettings, RefusesBadJson)
@@ -45,8 +63,31 @@ TEST(YoutubeTvSettings, RefusesBadJson)
 
 TEST(YoutubeTvSettings, WritesWhatItReads)
 {
-	const YoutubeTvSettings settings {.enabled = false, .strength = 7.0};
+	YoutubeTvSettings settings;
+	settings.enabled = false;
+	settings.helperPath = "D:/helper/youtube_tv_host.exe";
+	settings.volume = 0.25;
+	settings.maxSessions = 3;
+	settings.range = YuvRange::Full;
+	settings.scaleFilter = ScaleFilter::Nearest;
+	settings.speed.speed2Rate = 1.5;
+	settings.axes.rightHanded = false;
+	settings.axes.cameraLayout = CameraMatrixLayout::ViewColumns;
+	settings.axes.modelFront = {1.0F, 0.0F, 0.0F};
 	const auto back = ParseYoutubeTvSettings(YoutubeTvSettingsJson(settings));
-	ASSERT_TRUE(back);
+	ASSERT_TRUE(back) << back.GetError().message;
 	EXPECT_EQ(*back, settings);
 }
+
+TEST(YoutubeTvSettings, GivesTheSessionSettingsWithSizesOfTheHelper)
+{
+	YoutubeTvSettings settings;
+	settings.width = 650;
+	settings.height = 360;
+	const auto sessions = SessionSettingsOf(settings);
+	EXPECT_EQ(sessions.width, 656U);
+	EXPECT_EQ(sessions.height, 368U);
+	EXPECT_EQ(sessions.maxSessions, 2U);
+}
+
+} // namespace
