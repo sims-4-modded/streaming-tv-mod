@@ -84,8 +84,8 @@ constexpr std::array k_CommandNames {
 	{
 		return height.GetError();
 	}
-	command.width = *width;
-	command.height = *height;
+	command.width = RoundVideoSize(*width);
+	command.height = RoundVideoSize(*height);
 
 	if (json.contains("start"))
 	{
@@ -105,20 +105,23 @@ constexpr std::array k_CommandNames {
 		}
 		command.frameRate = *fps;
 	}
-	if (const auto paint = json.find("paint"); paint != json.end())
+	if (const auto field = json.find("matrix"); field != json.end())
 	{
-		if (*paint == "gpu")
+		const auto matrix = field->is_string() ? ParseYuvMatrix(field->get<std::string>()) : std::nullopt;
+		if (!matrix)
 		{
-			command.paint = PaintMode::Gpu;
+			return ts4::MakeError("the field \"matrix\" must be \"bt601\" or \"bt709\"");
 		}
-		else if (*paint == "cpu")
+		command.matrix = *matrix;
+	}
+	if (const auto field = json.find("range"); field != json.end())
+	{
+		const auto range = field->is_string() ? ParseYuvRange(field->get<std::string>()) : std::nullopt;
+		if (!range)
 		{
-			command.paint = PaintMode::Cpu;
+			return ts4::MakeError("the field \"range\" must be \"limited\" or \"full\"");
 		}
-		else
-		{
-			return ts4::MakeError("the field \"paint\" must be \"gpu\" or \"cpu\"");
-		}
+		command.range = *range;
 	}
 	return {};
 }
@@ -233,7 +236,8 @@ std::string CommandLine(const HostCommand& command)
 		json["height"] = command.height;
 		json["start"] = command.startSeconds;
 		json["fps"] = command.frameRate;
-		json["paint"] = command.paint == PaintMode::Gpu ? "gpu" : "cpu";
+		json["matrix"] = YuvMatrixName(command.matrix);
+		json["range"] = YuvRangeName(command.range);
 		break;
 	case CommandType::SetRate:
 		json["rate"] = command.rate;

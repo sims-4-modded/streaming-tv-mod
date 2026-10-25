@@ -26,19 +26,21 @@ add_subdirectory(external/common)
 find_package(nlohmann_json CONFIG REQUIRED)
 
 # The logic of the mod that does not need the game: the settings, the URL of a video, and the protocol between the
-# helper and its parent (the commands, the events, the shared memory and the audio ring).
+# helper and its parent (the commands, the events, the shared memory, the audio ring and the I420 frames).
 add_library(
   ts4_youtube_tv_core STATIC
   src/core/AudioRing.h
   src/core/HostCommand.h
   src/core/HostProtocol.h
   src/core/PlayerPage.h
+  src/core/Yuv.h
   src/core/YoutubeTvSettings.h
   src/core/YoutubeUrl.h
   src/core/AudioRing.cpp
   src/core/HostCommand.cpp
   src/core/HostProtocol.cpp
   src/core/PlayerPage.cpp
+  src/core/Yuv.cpp
   src/core/YoutubeTvSettings.cpp
   src/core/YoutubeUrl.cpp
 )

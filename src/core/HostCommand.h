@@ -10,6 +10,7 @@
 #include <string_view>
 
 #include <common/Result.h>
+#include <core/Yuv.h>
 #include <nlohmann/json.hpp>
 
 /// The commands that the parent sends to the helper, and the events that the helper sends back. Each command and each
@@ -29,13 +30,6 @@ enum class CommandType
 	Quit,
 };
 
-/// How the helper gets the frames from CEF.
-enum class PaintMode
-{
-	Gpu, ///< `OnAcceleratedPaint`: CEF gives a GPU texture, and the helper copies it on the GPU.
-	Cpu, ///< `OnPaint`: CEF gives the pixels in memory, and the helper sends them to the GPU.
-};
-
 /// One command from the parent.
 struct HostCommand
 {
@@ -45,10 +39,11 @@ struct HostCommand
 	// `open` only.
 	std::string videoId;
 	std::uint32_t startSeconds = 0;
-	std::uint32_t width = 0;
-	std::uint32_t height = 0;
+	std::uint32_t width = 0;  ///< A multiple of 16: the helper rounds the width of the parent up.
+	std::uint32_t height = 0; ///< A multiple of 16: the helper rounds the height of the parent up.
 	std::uint32_t frameRate = 30;
-	PaintMode paint = PaintMode::Gpu;
+	YuvMatrix matrix = YuvMatrix::Bt601;
+	YuvRange range = YuvRange::Limited;
 
 	double rate = 1.0;    ///< `setRate` only.
 	double seconds = 0.0; ///< `seek` only.
@@ -65,7 +60,7 @@ constexpr std::uint32_t k_MaxFrameRate = 60;
 
 /// Read one command line. The result is an error for a line that is not correct JSON, for an unknown command, and for
 /// a missing field or a value out of its range. The `open` command takes `videoId` or `url` (any form that
-/// `ParseYoutubeVideo` accepts).
+/// `ParseYoutubeVideo` accepts). It rounds the width and the height up to multiples of 16.
 [[nodiscard]] ts4::Result<HostCommand> ParseHostCommand(std::string_view line);
 
 /// Write one command as a line of JSON, without the `\n`.
