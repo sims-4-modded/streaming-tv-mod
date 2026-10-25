@@ -34,6 +34,7 @@ add_library(
   src/core/BridgeArgs.h
   src/core/CodeOffsets.h
   src/core/FrameWriter.h
+  src/core/GameObjects.h
   src/core/HostCommand.h
   src/core/HostProtocol.h
   src/core/PlayerPage.h
@@ -48,6 +49,7 @@ add_library(
   src/core/BridgeArgs.cpp
   src/core/CodeOffsets.cpp
   src/core/FrameWriter.cpp
+  src/core/GameObjects.cpp
   src/core/HostCommand.cpp
   src/core/HostProtocol.cpp
   src/core/PlayerPage.cpp
