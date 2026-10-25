@@ -1,0 +1,185 @@
+/******************************************************************************
+ * Copyright (c) 2026 Sims 4 mods developers
+ *****************************************************************************/
+
+// The tests of the reader of field offsets. The byte sequences are the instructions that the research of the mod
+// found in the code of the game. Each test keeps only these instructions, with filler bytes between them.
+
+#include <cstdint>
+
+#include <initializer_list>
+#include <vector>
+
+#include <core/CodeOffsets.h>
+#include <core/VideoLayout.h>
+#include <gtest/gtest.h>
+
+namespace
+{
+
+using namespace ts4_mod::youtube_tv;
+
+/// Make a fake window of code: the instruction groups in order, with filler bytes between them.
+std::vector<std::byte> Code(std::initializer_list<std::initializer_list<std::uint8_t>> groups)
+{
+	std::vector<std::byte> code(16, std::byte {0xCC});
+	for (const auto& group : groups)
+	{
+		for (const auto value : group)
+		{
+			code.push_back(static_cast<std::byte>(value));
+		}
+		code.insert(code.end(), 16, std::byte {0xCC});
+	}
+	return code;
+}
+
+// The instructions of the function that copies the planes.
+const std::initializer_list<std::uint8_t> k_Planes = {0x4D, 0x8B, 0xAF, 0x80, 0x00, 0x00, 0x00, 0x4C, 0x89, 0x6C, 0x24, 0x50,
+                                                      0x49, 0x8B, 0x87, 0x88, 0x00, 0x00, 0x00, 0x48, 0x89, 0x44, 0x24, 0x58,
+                                                      0x49, 0x8B, 0x87, 0x90, 0x00, 0x00, 0x00, 0x48, 0x89, 0x44, 0x24, 0x60};
+const std::initializer_list<std::uint8_t> k_PlaneFields = {0x8B, 0x43, 0x04, 0x89, 0x44, 0x24, 0x28, 0x8B, 0x03,
+                                                           0x89, 0x44, 0x24, 0x20, 0x4C, 0x8B, 0x4B, 0x10, 0x4C,
+                                                           0x8B, 0x43, 0x08, 0x33, 0xD2, 0x48, 0x8B, 0x4B, 0x18};
+const std::initializer_list<std::uint8_t> k_RendererSize = {0x44, 0x8B, 0x86, 0x90, 0x00, 0x00, 0x00, 0x8B,
+                                                            0x96, 0x8C, 0x00, 0x00, 0x00, 0x48, 0x8B, 0x4E};
+const std::initializer_list<std::uint8_t> k_RendererChannel = {0x48, 0x8B, 0x8E, 0xA0, 0x00, 0x00, 0x00,
+                                                               0x48, 0x85, 0xC9, 0x74, 0x05, 0xE8};
+const std::initializer_list<std::uint8_t> k_FrameFlip = {0x41, 0x0F, 0xB6, 0x87, 0xA1, 0x00,
+                                                         0x00, 0x00, 0x84, 0xC0, 0x74, 0x26};
+// The other functions.
+const std::initializer_list<std::uint8_t> k_ComponentChannel = {0x48, 0x8B, 0xD9, 0x41, 0x8B, 0xF9,
+                                                                0x48, 0x8B, 0x49, 0x20, 0x49, 0x8B};
+const std::initializer_list<std::uint8_t> k_MessageObjectId = {0x48, 0x8B, 0xD9, 0x48, 0x83, 0xC1, 0x28, 0x48, 0x8D, 0x55};
+const std::initializer_list<std::uint8_t> k_ChannelClipKey = {0x48, 0x8D, 0x93, 0xA0, 0x00, 0x00, 0x00, 0x48, 0x8B, 0xCB, 0xE8};
+const std::initializer_list<std::uint8_t> k_ListenerMatrix = {0x41, 0x0F, 0x10, 0x8E, 0xF0, 0x00,
+                                                              0x00, 0x00, 0x0F, 0x5C, 0x4E, 0x40};
+
+TEST(CodeOffsets, ReadsADwordDisplacement)
+{
+	const auto code = Code({k_RendererChannel});
+	const auto value = ReadDisplacement(code, game_layout::k_RendererChannel);
+	ASSERT_TRUE(value) << value.GetError().message;
+	EXPECT_EQ(*value, 0xA0);
+}
+
+TEST(CodeOffsets, ReadsAByteDisplacementWithItsSign)
+{
+	const DisplacementRule rule {
+	    .name = "test", .pattern = "48 8B 49 ??", .at = 3, .size = DisplacementSize::Byte, .min = -0x80, .max = 0x7F};
+	const auto code = Code({{0x48, 0x8B, 0x49, 0xF8}});
+	const auto value = ReadDisplacement(code, rule);
+	ASSERT_TRUE(value) << value.GetError().message;
+	EXPECT_EQ(*value, -8);
+	EXPECT_FALSE(ReadFieldOffset(code, rule));
+}
+
+TEST(CodeOffsets, ReadsTheFormWithNoDisplacementAsZero)
+{
+	const auto code = Code({k_PlaneFields});
+	const auto value = ReadDisplacement(code, game_layout::k_PlaneWidth);
+	ASSERT_TRUE(value) << value.GetError().message;
+	EXPECT_EQ(*value, 0);
+}
+
+TEST(CodeOffsets, RefusesAPatternWithNoMatch)
+{
+	const auto code = Code({k_FrameFlip});
+	EXPECT_FALSE(ReadDisplacement(code, game_layout::k_RendererChannel));
+}
+
+TEST(CodeOffsets, RefusesAPatternWithTwoMatches)
+{
+	const auto code = Code({k_RendererChannel, k_RendererChannel});
+	const auto value = ReadDisplacement(code, game_layout::k_RendererChannel);
+	ASSERT_FALSE(value);
+}
+
+TEST(CodeOffsets, RefusesAValueOutOfTheRange)
+{
+	const auto code = Code({{0x48, 0x8B, 0x8E, 0x00, 0x10, 0x00, 0x00, 0x48, 0x85, 0xC9, 0x74, 0x05, 0xE8}});
+	EXPECT_FALSE(ReadDisplacement(code, game_layout::k_RendererChannel));
+}
+
+TEST(CodeOffsets, RefusesAValueThatIsNotAligned)
+{
+	const auto code = Code({{0x48, 0x8B, 0x8E, 0xA4, 0x00, 0x00, 0x00, 0x48, 0x85, 0xC9, 0x74, 0x05, 0xE8}});
+	EXPECT_FALSE(ReadDisplacement(code, game_layout::k_RendererChannel));
+}
+
+TEST(CodeOffsets, RefusesADisplacementOutsideThePattern)
+{
+	const DisplacementRule rule {
+	    .name = "test", .pattern = "48 8B 49 ??", .at = 2, .size = DisplacementSize::Dword, .min = 0, .max = 0x100};
+	const auto code = Code({{0x48, 0x8B, 0x49, 0x20, 0x00, 0x00, 0x00}});
+	EXPECT_FALSE(ReadDisplacement(code, rule));
+}
+
+TEST(CodeOffsets, RefusesABadPattern)
+{
+	const DisplacementRule rule {.name = "test", .pattern = "48 8G", .at = 0, .size = DisplacementSize::None};
+	const auto code = Code({{0x48}});
+	EXPECT_FALSE(ReadDisplacement(code, rule));
+}
+
+TEST(VideoLayout, ReadsTheRendererLayoutFromTheInstructionsOfTheGame)
+{
+	const auto code = Code({k_RendererSize, k_RendererChannel, k_Planes, k_PlaneFields, k_FrameFlip});
+	const auto layout = game_layout::ReadRendererLayout(code);
+	ASSERT_TRUE(layout) << layout.GetError().message;
+	EXPECT_EQ(layout->framePlanes[0], 0x80U);
+	EXPECT_EQ(layout->framePlanes[1], 0x88U);
+	EXPECT_EQ(layout->framePlanes[2], 0x90U);
+	EXPECT_EQ(layout->frameFlip, 0xA1U);
+	EXPECT_EQ(layout->planeWidth, 0x0U);
+	EXPECT_EQ(layout->planeHeight, 0x4U);
+	EXPECT_EQ(layout->planeData, 0x8U);
+	EXPECT_EQ(layout->planePitch, 0x10U);
+	EXPECT_EQ(layout->rendererWidth, 0x8CU);
+	EXPECT_EQ(layout->rendererHeight, 0x90U);
+	EXPECT_EQ(layout->rendererChannel, 0xA0U);
+}
+
+TEST(VideoLayout, RefusesFieldsThatOverlap)
+{
+	// The U plane at the same offset as the Y plane.
+	const std::initializer_list<std::uint8_t> planes = {0x4D, 0x8B, 0xAF, 0x80, 0x00, 0x00, 0x00, 0x4C, 0x89, 0x6C, 0x24, 0x50,
+	                                                    0x49, 0x8B, 0x87, 0x80, 0x00, 0x00, 0x00, 0x48, 0x89, 0x44, 0x24, 0x58,
+	                                                    0x49, 0x8B, 0x87, 0x90, 0x00, 0x00, 0x00, 0x48, 0x89, 0x44, 0x24, 0x60};
+	const auto code = Code({k_RendererSize, k_RendererChannel, planes, k_PlaneFields, k_FrameFlip});
+	EXPECT_FALSE(game_layout::ReadRendererLayout(code));
+}
+
+TEST(VideoLayout, RefusesARendererLayoutWithAMissingRule)
+{
+	const auto code = Code({k_RendererSize, k_Planes, k_PlaneFields, k_FrameFlip});
+	EXPECT_FALSE(game_layout::ReadRendererLayout(code));
+}
+
+TEST(VideoLayout, ReadsTheChannelLayout)
+{
+	const auto layout =
+	    game_layout::ReadChannelLayout(Code({k_ComponentChannel}), Code({k_MessageObjectId}), Code({k_ChannelClipKey}));
+	ASSERT_TRUE(layout) << layout.GetError().message;
+	EXPECT_EQ(layout->componentChannel, 0x20U);
+	EXPECT_EQ(layout->messageObjectId, 0x28U);
+	EXPECT_EQ(layout->channelClipKey, 0xA0U);
+}
+
+TEST(VideoLayout, ReadsTheListenerLayout)
+{
+	const auto offset = game_layout::ReadListenerLayout(Code({k_ListenerMatrix}));
+	ASSERT_TRUE(offset) << offset.GetError().message;
+	EXPECT_EQ(*offset, 0x40U);
+}
+
+TEST(VideoLayout, TheSignaturesHaveTheirFullLength)
+{
+	EXPECT_EQ(game_layout::k_RenderFrameSignature.size, 27U);
+	EXPECT_EQ(game_layout::k_SetPlaylistSignature.size, 21U);
+	EXPECT_EQ(game_layout::k_PlaylistMessageSignature.size, 24U);
+	EXPECT_EQ(game_layout::k_ChannelUpdateSignature.size, 29U);
+	EXPECT_EQ(game_layout::k_ListenerSignature.size, 12U);
+}
+
+} // namespace

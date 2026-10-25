@@ -30,18 +30,22 @@ find_package(nlohmann_json CONFIG REQUIRED)
 add_library(
   ts4_youtube_tv_core STATIC
   src/core/AudioRing.h
+  src/core/CodeOffsets.h
   src/core/HostCommand.h
   src/core/HostProtocol.h
   src/core/PlayerPage.h
   src/core/Yuv.h
   src/core/YoutubeTvSettings.h
+  src/core/VideoLayout.h
   src/core/YoutubeUrl.h
   src/core/AudioRing.cpp
+  src/core/CodeOffsets.cpp
   src/core/HostCommand.cpp
   src/core/HostProtocol.cpp
   src/core/PlayerPage.cpp
   src/core/Yuv.cpp
   src/core/YoutubeTvSettings.cpp
+  src/core/VideoLayout.cpp
   src/core/YoutubeUrl.cpp
 )
 target_include_directories(ts4_youtube_tv_core PUBLIC src)
