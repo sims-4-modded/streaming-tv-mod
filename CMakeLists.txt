@@ -35,6 +35,8 @@ add_library(
   src/core/HostCommand.h
   src/core/HostProtocol.h
   src/core/PlayerPage.h
+  src/core/Sessions.h
+  src/core/SpeedPolicy.h
   src/core/Yuv.h
   src/core/YoutubeTvSettings.h
   src/core/VideoLayout.h
@@ -45,6 +47,8 @@ add_library(
   src/core/HostCommand.cpp
   src/core/HostProtocol.cpp
   src/core/PlayerPage.cpp
+  src/core/Sessions.cpp
+  src/core/SpeedPolicy.cpp
   src/core/Yuv.cpp
   src/core/YoutubeTvSettings.cpp
   src/core/VideoLayout.cpp
