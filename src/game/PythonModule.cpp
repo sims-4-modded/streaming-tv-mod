@@ -236,8 +236,33 @@ PyObject* Status(PyObject*, PyObject*)
 	});
 }
 
+PyObject* SetFrameMode(PyObject*, PyObject* args)
+{
+	return Guarded([args](const ModuleExports& py) -> PyObject* {
+		const char* text = nullptr;
+		if (py.PyArg_ParseTuple(args, "s:set_frame_mode", &text) == 0)
+		{
+			return nullptr;
+		}
+		auto* mod = ActiveYoutubeTvMod();
+		if (mod == nullptr)
+		{
+			py.PyErr_SetString(*py.PyExc_RuntimeError, "youtube_tv.dll is not ready");
+			return nullptr;
+		}
+		const auto mode = ParseFrameWriteMode(text);
+		if (!mode)
+		{
+			py.PyErr_SetString(*py.PyExc_RuntimeError, "the mode is not video, off or bars");
+			return nullptr;
+		}
+		mod->Runtime().SetFrameWrite(*mode);
+		return py.Py_BuildValue("i", 1);
+	});
+}
+
 /// The functions of the module. Python keeps pointers to these rows, so the table is static.
-std::array<PyMethodDef, 9> s_methods {{
+std::array<PyMethodDef, 10> s_methods {{
     {"api_version", &ApiVersion, k_MethNoArgs, "api_version() -> int: the version of the bridge."},
     {"play", &Play, k_MethVarArgs, "play(object_id, url, (x, y, z), (x, y, z, w)) -> int: 1, or 0 and last_error()."},
     {"stop", &Stop, k_MethVarArgs, "stop(object_id) -> int: 1 if a video stopped."},
@@ -247,6 +272,7 @@ std::array<PyMethodDef, 9> s_methods {{
     {"set_screen_key", &SetScreenKey, k_MethVarArgs, "set_screen_key(object_id, instance, type, group)."},
     {"last_error", &LastError, k_MethNoArgs, "last_error() -> str: the error of the last call."},
     {"status", &Status, k_MethNoArgs, "status() -> str: the status of the DLL as JSON text."},
+    {"set_frame_mode", &SetFrameMode, k_MethVarArgs, "set_frame_mode(mode) -> int: write video, off or bars (tests)."},
 }};
 
 } // namespace

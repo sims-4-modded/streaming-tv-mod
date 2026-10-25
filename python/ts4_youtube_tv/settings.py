@@ -12,6 +12,10 @@ The fields:
 - watch_affordances: the names of the watch interactions of the game, in the order that the mod tries them when the
   Sim starts to watch a video (watch.py). If no name matches, the mod takes the first watch interaction of the TV.
 - enabled: set it to false to hide the interaction and stop the cheat command play.
+- test_url: the URL that the cheat command youtube_tv.watch_test uses. A test in the game uses it, because the cheat
+  console makes the text of a command lower case. Empty: the command does nothing.
+- speed_override: set it to false to keep the mute speed and the distortion speed of the TV (speed_override.py).
+- speed_override_resend: set it to false to change the values without a new send of the current playlist.
 """
 
 import json
@@ -28,7 +32,14 @@ MAX_WATCH_AFFORDANCES = 16
 DEFAULTS = {
     "watch_affordances": DEFAULT_WATCH_AFFORDANCES,
     "enabled": True,
+    "test_url": "",
+    "speed_override": True,
+    "speed_override_resend": True,
 }
+
+# The fields that hold true or false.
+_FLAGS = ("enabled", "speed_override", "speed_override_resend")
+MAX_TEST_URL_LENGTH = 200
 
 _NAME_CHARACTERS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
 
@@ -70,11 +81,19 @@ def parse(data):
         else:
             log.write("settings: watch_affordances {!r} is not a list of 1 to {} tuning names; the mod uses {}".format(
                 data["watch_affordances"], MAX_WATCH_AFFORDANCES, list(DEFAULT_WATCH_AFFORDANCES)))
-    enabled = data.get("enabled", True)
-    if isinstance(enabled, bool):
-        values["enabled"] = enabled
+    for name in _FLAGS:
+        value = data.get(name, DEFAULTS[name])
+        if isinstance(value, bool):
+            values[name] = value
+        else:
+            log.write("settings: {} {!r} is not true or false; the mod uses {}".format(
+                name, value, "true" if DEFAULTS[name] else "false"))
+    test_url = data.get("test_url", "")
+    if isinstance(test_url, str) and len(test_url) <= MAX_TEST_URL_LENGTH:
+        values["test_url"] = test_url.strip()
     else:
-        log.write("settings: enabled {!r} is not true or false; the mod uses true".format(enabled))
+        log.write("settings: test_url is not a text of at most {} characters; the mod uses no URL".format(
+            MAX_TEST_URL_LENGTH))
     for name in data:
         if name not in DEFAULTS:
             log.write("settings: the field {!r} is not known".format(name))

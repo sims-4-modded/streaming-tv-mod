@@ -188,14 +188,31 @@ void YoutubeTvMod::EnsureLayouts()
 		return CodeWindow(*module, *match, size);
 	};
 	namespace layout = game_layout;
-	if (auto renderer =
-	        layout::ReadRendererLayout(window("RenderFrame", layout::k_RenderFrameSignature.text, layout::k_RenderFrameWindow)))
+	const auto renderFrameCode = window("RenderFrame", layout::k_RenderFrameSignature.text, layout::k_RenderFrameWindow);
+	if (auto renderer = layout::ReadRendererLayout(renderFrameCode))
 	{
 		_runtime->SetRendererLayout(*renderer);
 	}
 	else
 	{
 		_host->Error("the frames stay off: {}", renderer.GetError().message);
+	}
+	const auto codeAt = [&](std::uintptr_t address, std::size_t size) -> std::span<const std::byte> {
+		const auto* start = reinterpret_cast<const std::byte*>(address);
+		if (!module->Contains(start))
+		{
+			return {};
+		}
+		return CodeWindow(*module, start, size);
+	};
+	if (auto settings =
+	        layout::ReadVideoSettingsLayout(renderFrameCode, reinterpret_cast<std::uintptr_t>(renderFrameCode.data()), codeAt))
+	{
+		_runtime->SetVideoSettingsLayout(*settings);
+	}
+	else
+	{
+		_host->Warn("the diagnostic of the video settings stays off: {}", settings.GetError().message);
 	}
 	auto channel = layout::ReadChannelLayout(
 	    window("SetPlaylist", layout::k_SetPlaylistSignature.text, layout::k_SetPlaylistWindow),

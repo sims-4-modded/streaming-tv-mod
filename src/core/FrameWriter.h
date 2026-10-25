@@ -8,7 +8,9 @@
 #include <cstdint>
 
 #include <array>
+#include <optional>
 #include <span>
+#include <string_view>
 
 #include <common/Result.h>
 #include <core/Yuv.h>
@@ -80,5 +82,25 @@ struct FitRect
 /// not correct.
 [[nodiscard]] ts4::Result<FrameWrite> WriteI420Frame(const ConstI420Planes& image, const GameFrame& frame, ScaleFilter filter,
                                                      YuvRange range);
+
+/// What the mod writes into the frames of a TV with a video. The modes other than `Video` are for tests in the game.
+enum class FrameWriteMode
+{
+	Video, ///< The newest frame of the video of the helper.
+	Off,   ///< Nothing. The frame callback only counts the frames, and the game shows its own clip.
+	Bars,  ///< Colour bars with a white band at the top, without the helper.
+};
+
+[[nodiscard]] std::optional<FrameWriteMode> ParseFrameWriteMode(std::string_view text);
+[[nodiscard]] const char* FrameWriteModeName(FrameWriteMode mode);
+
+/// Write eight vertical colour bars (white, yellow, cyan, green, magenta, red, blue, black) into `frame`, with a
+/// white band in the top eighth of the picture. The band shows if the picture is the right way up. The result is an
+/// error, and the writer writes nothing, if a plane is not correct.
+[[nodiscard]] ts4::Result<void> WriteColourBars(const GameFrame& frame, YuvRange range);
+
+/// The mean value of the bytes of each plane (Y, U, V). The function reads only the rows of each plane. An empty plane
+/// gives 0.
+[[nodiscard]] std::array<double, 3> PlaneMeans(const GameFrame& frame);
 
 } // namespace ts4_mod::youtube_tv

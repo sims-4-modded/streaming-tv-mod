@@ -76,6 +76,9 @@ class _ModuleLibrary:
     def status_text(self):
         return self._module.status()
 
+    def set_frame_mode(self, mode):
+        return self._module.set_frame_mode(mode)
+
 
 def _open_dll():
     """Return a library for the youtube_tv.dll that the extender loaded, or (None, reason)."""
@@ -289,3 +292,21 @@ def set_screen_key(object_id, instance, resource_type, group):
         _dll.YoutubeTvSetScreenKey(int(object_id), int(instance), int(resource_type), int(group))
     except Exception:  # noqa: BLE001
         log.exception("native: YoutubeTvSetScreenKey failed for the object {}".format(object_id))
+
+
+def set_frame_mode(mode):
+    """Tell the DLL mod what to write into the frames: video, off or bars. Return (True, None) or (False, the error).
+
+    Only the Python module of the DLL has this function. A test in the game uses it.
+    """
+    if not available():
+        return False, "the bridge is off: {}".format(reason())
+    function = getattr(_dll, "set_frame_mode", None)
+    if function is None:
+        return False, "the DLL mod has no function set_frame_mode"
+    try:
+        function(str(mode))
+        return True, None
+    except Exception as error:  # noqa: BLE001
+        log.exception("native: set_frame_mode failed")
+        return False, str(error)

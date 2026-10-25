@@ -6,6 +6,7 @@
 
 #include <cstdint>
 
+#include <array>
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -52,10 +53,15 @@ public:
 	void SetRendererLayout(const game_layout::RendererLayout& layout);
 	void SetChannelLayout(const game_layout::ChannelLayout& layout);
 	void SetListenerOffset(std::size_t offset);
+	/// Give the place of the video settings of the game. The diagnostic lines then show the two flags of the copy and
+	/// the draw.
+	void SetVideoSettingsLayout(const game_layout::VideoSettingsLayout& layout);
 
 	/// Use new settings. The size, the frame rate and the matrix apply to the next videos.
 	void ApplySettings(const YoutubeTvSettings& settings);
 	[[nodiscard]] YoutubeTvSettings Settings() const;
+	/// Change what the mod writes into the frames, while the game runs. Only a test in the game uses it.
+	void SetFrameWrite(FrameWriteMode mode);
 
 	// The calls of the script mod and of the inspector.
 
@@ -109,6 +115,10 @@ private:
 	void Run(SessionActions&& actions);
 	void OnEvent(const host::HostEvent& event);
 	void UpdateAudio();
+	/// Write the diagnostic line of the frames, if the last line is old enough.
+	void ReportFramesLocked();
+	/// The two flags of the video settings of the game (byte 0 draw, byte 1 copy), or text that tells why not.
+	[[nodiscard]] std::string VideoSettingsTextLocked() const;
 
 	/// The lock of the state below. The log function and the memory access need no lock.
 	mutable std::mutex _mutex;
@@ -123,6 +133,7 @@ private:
 	std::optional<game_layout::RendererLayout> _renderer;
 	std::optional<game_layout::ChannelLayout> _channel;
 	std::optional<std::size_t> _listenerOffset;
+	std::optional<game_layout::VideoSettingsLayout> _videoSettings;
 
 	std::optional<std::uint64_t> _pendingObject;
 	std::optional<AudioPose> _listener;
@@ -131,6 +142,16 @@ private:
 	std::chrono::steady_clock::time_point _lastPump {};
 	std::uint64_t _framesWritten = 0;
 	std::uint64_t _renderCalls = 0;
+
+	// The diagnostics of the frames.
+	std::set<std::uintptr_t> _seenChannels;
+	std::uint64_t _matchedCalls = 0;
+	std::uint64_t _frontFrame = 0;
+	std::array<double, 3> _meansBefore {};
+	std::array<double, 3> _meansAfter {};
+	bool _measured = false;
+	std::chrono::steady_clock::time_point _lastReport {};
+	std::chrono::steady_clock::time_point _lastMeasure {};
 };
 
 } // namespace ts4_mod::youtube_tv

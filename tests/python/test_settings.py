@@ -25,6 +25,20 @@ class SettingsTest(unittest.TestCase):
             values = settings.parse({"watch_affordances": value})
             self.assertEqual(values["watch_affordances"], settings.DEFAULT_WATCH_AFFORDANCES, value)
 
+    def test_reads_the_test_fields(self):
+        values = settings.parse({"test_url": " https://youtu.be/pAzmtqD-ppQ ", "speed_override": False,
+                                 "speed_override_resend": False})
+        self.assertEqual(values["test_url"], "https://youtu.be/pAzmtqD-ppQ")
+        self.assertFalse(values["speed_override"])
+        self.assertFalse(values["speed_override_resend"])
+
+    def test_keeps_the_default_for_incorrect_test_fields(self):
+        values = settings.parse({"test_url": 5, "speed_override": "no", "speed_override_resend": 0})
+        self.assertEqual(values["test_url"], "")
+        self.assertTrue(values["speed_override"])
+        self.assertTrue(values["speed_override_resend"])
+        self.assertEqual(settings.parse({"test_url": "x" * 201})["test_url"], "")
+
     def test_the_old_field_screen_clip_is_not_known(self):
         values = settings.parse({"screen_clip": "TS4_TV_Yulelog"})
         self.assertNotIn("screen_clip", values)

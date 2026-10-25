@@ -244,4 +244,103 @@ ts4::Result<FrameWrite> WriteI420Frame(const ConstI420Planes& image, const GameF
 	return FrameWrite::Letterbox;
 }
 
+std::optional<FrameWriteMode> ParseFrameWriteMode(std::string_view text)
+{
+	if (text == "video")
+	{
+		return FrameWriteMode::Video;
+	}
+	if (text == "off")
+	{
+		return FrameWriteMode::Off;
+	}
+	if (text == "bars")
+	{
+		return FrameWriteMode::Bars;
+	}
+	return std::nullopt;
+}
+
+const char* FrameWriteModeName(FrameWriteMode mode)
+{
+	switch (mode)
+	{
+	case FrameWriteMode::Video:
+		return "video";
+	case FrameWriteMode::Off:
+		return "off";
+	case FrameWriteMode::Bars:
+		return "bars";
+	}
+	return "video";
+}
+
+ts4::Result<void> WriteColourBars(const GameFrame& frame, YuvRange range)
+{
+	if (auto checked = CheckGameFrame(frame); !checked)
+	{
+		return checked.GetError();
+	}
+	// The bars of BT.601 at full intensity, in the limited range: Y, U, V.
+	constexpr std::array<std::array<std::uint8_t, 3>, 8> k_Bars {{
+	    {235, 128, 128},
+	    {210, 16, 146},
+	    {170, 166, 16},
+	    {145, 54, 34},
+	    {106, 202, 222},
+	    {81, 90, 240},
+	    {41, 240, 110},
+	    {16, 128, 128},
+	}};
+	const auto value = [range](std::uint8_t limited, bool luma) -> std::uint8_t {
+		if (range == YuvRange::Limited)
+		{
+			return limited;
+		}
+		const double scale = luma ? 255.0 / 219.0 : 255.0 / 224.0;
+		const double offset = luma ? 16.0 : 128.0;
+		const double full = luma ? (limited - offset) * scale : (limited - offset) * scale + 128.0;
+		return static_cast<std::uint8_t>(std::clamp(full + 0.5, 0.0, 255.0));
+	};
+	for (std::size_t index = 0; index < 3; ++index)
+	{
+		const auto& plane = frame.planes[index];
+		const auto band = std::max<std::uint32_t>(1, plane.height / 8);
+		for (std::uint32_t row = 0; row < plane.height; ++row)
+		{
+			auto* target = plane.data.data() + TargetRow(row, plane.height, frame.flip) * plane.pitch;
+			for (std::uint32_t column = 0; column < plane.width; ++column)
+			{
+				const auto bar = row < band ? 0 : std::min<std::size_t>(7, std::size_t {column} * 8 / plane.width);
+				target[column] = value(k_Bars[bar][index], index == 0);
+			}
+		}
+	}
+	return {};
+}
+
+std::array<double, 3> PlaneMeans(const GameFrame& frame)
+{
+	std::array<double, 3> means {};
+	for (std::size_t index = 0; index < 3; ++index)
+	{
+		const auto& plane = frame.planes[index];
+		if (plane.width == 0 || plane.height == 0 || !HoldsRows(plane.data.size(), plane.width, plane.height, plane.pitch))
+		{
+			continue;
+		}
+		std::uint64_t sum = 0;
+		for (std::uint32_t row = 0; row < plane.height; ++row)
+		{
+			const auto* source = plane.data.data() + row * plane.pitch;
+			for (std::uint32_t column = 0; column < plane.width; ++column)
+			{
+				sum += source[column];
+			}
+		}
+		means[index] = static_cast<double>(sum) / (static_cast<double>(plane.width) * plane.height);
+	}
+	return means;
+}
+
 } // namespace ts4_mod::youtube_tv

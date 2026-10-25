@@ -90,4 +90,14 @@ TEST(YoutubeTvSettings, GivesTheSessionSettingsWithSizesOfTheHelper)
 	EXPECT_EQ(sessions.maxSessions, 2U);
 }
 
+TEST(YoutubeTvSettings, ReadsTheFrameWriteMode)
+{
+	const auto settings = ParseYoutubeTvSettingsText(R"({"frameWrite": "bars"})");
+	ASSERT_TRUE(settings) << settings.GetError().message;
+	EXPECT_EQ(settings->frameWrite, FrameWriteMode::Bars);
+	EXPECT_EQ(YoutubeTvSettingsJson(*settings)["frameWrite"], "bars");
+	EXPECT_FALSE(ParseYoutubeTvSettingsText(R"({"frameWrite": "pattern"})"));
+	EXPECT_EQ(YoutubeTvSettings {}.frameWrite, FrameWriteMode::Video);
+}
+
 } // namespace

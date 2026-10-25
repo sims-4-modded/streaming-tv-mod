@@ -192,6 +192,9 @@ the default, with one log line.
 |---|---|---|
 | `watch_affordances` | `["tv_WatchNews", "tv_WatchAction", "tv_WatchMusic"]` | The names of the watch interactions, in the order that the mod tries them. If no name matches, the mod takes the first watch interaction of the TV. 1 to 16 names of letters, digits, `_` and `-`. |
 | `enabled` | `true` | `false` hides the interaction and stops the cheat command `youtube_tv.play`. |
+| `test_url` | `""` | The URL of `youtube_tv.watch_test` (a test in the game; the console makes a URL lower case). |
+| `speed_override` | `true` | `false` keeps the `mute_speed` and `distortion_speed` of the TV (a test in the game). |
+| `speed_override_resend` | `true` | `false` changes the values without a new send of the current playlist (a test in the game). |
 
 The log of the script mod is `%LOCALAPPDATA%\Sims4Mods\logs\youtube_tv_script.log`. The mod never writes into the game
 folder.
@@ -204,6 +207,10 @@ folder.
 | `youtube_tv.stop` | Stops every video of the mod and cancels the watch interactions. |
 | `youtube_tv.status` | Shows the bridge (ready or off, and why), the settings, the sessions, the last speed that the mod sent, and the status of the DLL mod (`renderCalls`, `framesWritten`, the audio). |
 | `youtube_tv.info` | Shows the Video component of the nearest TV: `video_display_type`, `mute_speed`, `distortion_speed`, `speed_audio_clip_replacement` and the playlist with its clip keys. This answers open point 1 of the research. |
+| `youtube_tv.watch_test` | Does the same as the OK of the dialog, with `test_url`. For a test in the game without the dialog. |
+| `youtube_tv.watch_game` | Pushes only the watch interaction of the game on the nearest TV, with no video of the mod. |
+| `youtube_tv.camera [distance]` | Moves the camera to the front of the nearest TV (default 2.5 units) and puts the walls up. |
+| `youtube_tv.frames <video\|off\|bars>` | Tells the DLL mod what to write into the frames (`set_frame_mode` of its Python module). |
 
 ## Build, test and install
 

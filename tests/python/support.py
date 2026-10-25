@@ -109,6 +109,7 @@ class FakeObject:
         self.sent_playlists = []
         self.position = Vector(*position)
         self.orientation = Vector(0.0, 0.5, 0.0, 0.5)
+        self.forward = Vector(0.0, 0.0, 1.0)
         self.state_component = FakeStateComponent(usable)
         self.location_callbacks = []
         self._components = {types.VIDEO_COMPONENT: VideoComponent(self)} if video else {}
@@ -255,6 +256,7 @@ class FakeDll:
         self.YoutubeTvSetTransform = FakeFunction(None)
         self.YoutubeTvSetScreenKey = FakeFunction(None)
         self.YoutubeTvLastError = FakeFunction(side_effect=self._last_error)
+        self.set_frame_mode = FakeFunction(1)
 
     def _last_error(self, buffer, size):
         data = self.error[:size - 1]

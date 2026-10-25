@@ -260,4 +260,73 @@ TEST(FrameWriter, RefusesAnImageWithSmallPlanes)
 	EXPECT_EQ(frame.buffers[0].At(0, 0), k_Guard);
 }
 
+TEST(FrameWriter, WritesColourBarsWithABandAtTheTop)
+{
+	FakeFrame frame(64, 32, 8);
+	const auto result = WriteColourBars(frame.Frame(), YuvRange::Limited);
+	ASSERT_TRUE(result) << result.GetError().message;
+	// The band at the top is white.
+	EXPECT_EQ(frame.buffers[0].At(60, 0), 235);
+	EXPECT_EQ(frame.buffers[0].At(60, 3), 235);
+	// Below the band: the first bar is white, the last bar is black.
+	EXPECT_EQ(frame.buffers[0].At(0, 20), 235);
+	EXPECT_EQ(frame.buffers[0].At(63, 20), 16);
+	EXPECT_EQ(frame.buffers[1].At(31, 10), 128);
+	// The second bar is yellow.
+	EXPECT_EQ(frame.buffers[0].At(10, 20), 210);
+	EXPECT_EQ(frame.buffers[1].At(5, 10), 16);
+	EXPECT_EQ(frame.buffers[2].At(5, 10), 146);
+	EXPECT_TRUE(frame.GuardsKept());
+}
+
+TEST(FrameWriter, PutsTheBandOfTheBarsAtTheBottomRowsWhenTheFrameFlips)
+{
+	FakeFrame frame(64, 32, 0);
+	frame.flip = true;
+	ASSERT_TRUE(WriteColourBars(frame.Frame(), YuvRange::Limited));
+	EXPECT_EQ(frame.buffers[0].At(63, 31), 235);
+	EXPECT_EQ(frame.buffers[0].At(63, 0), 16);
+}
+
+TEST(FrameWriter, WritesFullRangeBars)
+{
+	FakeFrame frame(16, 16, 0);
+	ASSERT_TRUE(WriteColourBars(frame.Frame(), YuvRange::Full));
+	EXPECT_EQ(frame.buffers[0].At(0, 0), 255);
+	EXPECT_EQ(frame.buffers[0].At(15, 15), 0);
+	EXPECT_EQ(frame.buffers[1].At(7, 7), 128);
+}
+
+TEST(FrameWriter, RefusesBarsForAPlaneThatIsNotCorrect)
+{
+	FakeFrame frame(16, 16, 0);
+	auto game = frame.Frame();
+	game.planes[1].width = 3;
+	EXPECT_FALSE(WriteColourBars(game, YuvRange::Limited));
+}
+
+TEST(FrameWriter, GivesTheMeanOfEachPlane)
+{
+	FakeFrame frame(16, 8, 4);
+	ASSERT_TRUE(WriteColourBars(frame.Frame(), YuvRange::Limited));
+	const auto means = PlaneMeans(frame.Frame());
+	// The guard bytes in the padding do not count. The band is 1 row of 8 and the bars have 2 columns each.
+	const double bars = (235.0 + 210 + 170 + 145 + 106 + 81 + 41 + 16) / 8.0;
+	EXPECT_NEAR(means[0], (235.0 + 7 * bars) / 8.0, 0.01);
+	EXPECT_GT(means[1], 0.0);
+	FakeFrame empty(16, 8, 0);
+	auto game = empty.Frame();
+	game.planes[2].height = 0;
+	EXPECT_EQ(PlaneMeans(game)[2], 0.0);
+}
+
+TEST(FrameWriter, ReadsTheNamesOfTheWriteModes)
+{
+	EXPECT_EQ(ParseFrameWriteMode("video"), FrameWriteMode::Video);
+	EXPECT_EQ(ParseFrameWriteMode("off"), FrameWriteMode::Off);
+	EXPECT_EQ(ParseFrameWriteMode("bars"), FrameWriteMode::Bars);
+	EXPECT_FALSE(ParseFrameWriteMode("Bars"));
+	EXPECT_STREQ(FrameWriteModeName(FrameWriteMode::Off), "off");
+}
+
 } // namespace

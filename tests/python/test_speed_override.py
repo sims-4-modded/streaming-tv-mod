@@ -11,6 +11,7 @@ import support
 import zone
 from objects.components import types
 from ts4_youtube_tv import session
+from ts4_youtube_tv import settings
 from ts4_youtube_tv import speed_override
 
 URL = "https://www.youtube.com/watch?v=M7lc1UVf-VE"
@@ -31,6 +32,7 @@ class SpeedOverrideTest(unittest.TestCase):
     def tearDown(self):
         support.use_dll(None)
         session.clear()
+        settings.set_values({})
 
     def start(self):
         ok, error = session.start(self.tv, URL, self.sim)
@@ -139,6 +141,26 @@ class SpeedOverrideTest(unittest.TestCase):
         self.assertEqual(self.speeds(self.other_component), (OLD, OLD))
         self.assertEqual(self.last_message(self.other), (OLD, OLD))
         self.assertEqual(len(self.other.sent_playlists), 2)
+
+    def test_the_setting_turns_the_override_off(self):
+        settings.set_values({"speed_override": False})
+        self.component.set_video_clips(["TS4_TV_News"], loop_last=True)
+        interaction = self.start()
+        self.assertEqual(self.speeds(self.component), (OLD, OLD))
+        self.assertEqual(len(self.tv.sent_playlists), 1)
+        interaction.finish()
+        self.assertEqual(self.speeds(self.component), (OLD, OLD))
+
+    def test_the_setting_turns_the_resend_off(self):
+        settings.set_values({"speed_override_resend": False})
+        self.component.set_video_clips(["TS4_TV_News"], loop_last=True)
+        interaction = self.start()
+        self.assertEqual(self.speeds(self.component), (SUPER, SUPER))
+        self.assertEqual(self.tv.video_playlist.mute_speed, SUPER)
+        self.assertEqual(len(self.tv.sent_playlists), 1)
+        interaction.finish()
+        self.assertEqual(self.speeds(self.component), (OLD, OLD))
+        self.assertEqual(len(self.tv.sent_playlists), 1)
 
     def test_a_refused_video_changes_nothing(self):
         support.use_dll(support.FakeDll(play_result=0, error=b"no helper"))

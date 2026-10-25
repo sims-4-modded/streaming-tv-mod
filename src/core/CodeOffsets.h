@@ -47,6 +47,21 @@ struct DisplacementRule
 /// or if the value is out of the range or not aligned.
 [[nodiscard]] ts4::Result<std::int64_t> ReadDisplacement(std::span<const std::byte> code, const DisplacementRule& rule);
 
+/// One instruction with a relative displacement of four bytes: a call, or a read relative to the instruction pointer.
+/// The displacement goes from the end of the instruction to the target.
+struct RelativeRule
+{
+	std::string_view name;    ///< The name of the target in the log.
+	std::string_view pattern; ///< The pattern must match exactly one place in the code.
+	std::size_t at = 0;       ///< The index in the pattern of the first byte of the displacement.
+	std::size_t end = 0;      ///< The index in the pattern of the first byte after the instruction.
+};
+
+/// Find the one match of the pattern of `rule` in `code`, which starts at the address `codeAddress`, and return the
+/// address of the target of the instruction.
+[[nodiscard]] ts4::Result<std::uintptr_t> ReadRelativeTarget(std::span<const std::byte> code, std::uintptr_t codeAddress,
+                                                             const RelativeRule& rule);
+
 /// Read a displacement and return it as an unsigned offset. The range of the rule must not be negative.
 [[nodiscard]] ts4::Result<std::size_t> ReadFieldOffset(std::span<const std::byte> code, const DisplacementRule& rule);
 

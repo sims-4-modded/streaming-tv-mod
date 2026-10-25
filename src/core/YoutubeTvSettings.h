@@ -37,6 +37,8 @@ struct YoutubeTvSettings
 	YuvMatrix matrix = YuvMatrix::Bt601;
 	YuvRange range = YuvRange::Limited;
 	ScaleFilter scaleFilter = ScaleFilter::Bilinear;
+	/// What the mod writes into the frames of a TV. Only a test in the game changes it.
+	FrameWriteMode frameWrite = FrameWriteMode::Video;
 	SpeedRules speed;
 	AxisConvention axes;
 

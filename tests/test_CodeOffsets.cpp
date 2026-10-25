@@ -182,4 +182,67 @@ TEST(VideoLayout, TheSignaturesHaveTheirFullLength)
 	EXPECT_EQ(game_layout::k_ListenerSignature.size, 12U);
 }
 
+TEST(CodeOffsets, ReadsTheTargetOfARelativeCall)
+{
+	// The call at index 2 of this code goes 0x10 bytes past the end of the call.
+	const std::vector<std::byte> code {std::byte {0xCC}, std::byte {0xCC}, std::byte {0xE8}, std::byte {0x10},
+	                                   std::byte {0x00}, std::byte {0x00}, std::byte {0x00}, std::byte {0xC3}};
+	const RelativeRule rule {.name = "call", .pattern = "E8 ?? ?? ?? ?? C3", .at = 1, .end = 5};
+	const auto target = ReadRelativeTarget(code, 0x1000, rule);
+	ASSERT_TRUE(target) << target.GetError().message;
+	EXPECT_EQ(*target, 0x1000u + 7 + 0x10);
+	const RelativeRule bad {.name = "bad", .pattern = "E8 ?? ?? C3", .at = 1, .end = 3};
+	EXPECT_FALSE(ReadRelativeTarget(code, 0x1000, bad));
+}
+
+TEST(CodeOffsets, ReadsANegativeRelativeTarget)
+{
+	const std::vector<std::byte> code {std::byte {0xE8}, std::byte {0xF0}, std::byte {0xFF},
+	                                   std::byte {0xFF}, std::byte {0xFF}, std::byte {0xC3}};
+	const RelativeRule rule {.name = "call", .pattern = "E8 ?? ?? ?? ?? C3", .at = 1, .end = 5};
+	const auto target = ReadRelativeTarget(code, 0x1000, rule);
+	ASSERT_TRUE(target);
+	EXPECT_EQ(*target, 0x1000u + 5 - 0x10);
+}
+
+TEST(VideoLayout, ReadsThePlaceOfTheVideoSettings)
+{
+	// The two calls and the test of the copy flag, at the address 0x5000. The first call goes to 0x7000, the second
+	// to 0x8000.
+	auto code =
+	    Code({{0xE8, 0x00, 0x00, 0x00, 0x00, 0x48, 0x8B, 0xC8, 0xE8, 0x00, 0x00, 0x00, 0x00, 0x80, 0x78, 0x01, 0x00, 0x74}});
+	const std::uintptr_t base = 0x5000;
+	const std::size_t call = 16;
+	const auto put = [&](std::size_t at, std::int32_t value) {
+		for (std::size_t index = 0; index < 4; ++index)
+		{
+			code[at + index] = static_cast<std::byte>((static_cast<std::uint32_t>(value) >> (8 * index)) & 0xFF);
+		}
+	};
+	put(call + 1, static_cast<std::int32_t>(0x7000 - (base + call + 5)));
+	put(call + 9, static_cast<std::int32_t>(0x8000 - (base + call + 13)));
+	// The getter of the manager reads the global at 0x9000. The getter of the settings adds 0x128.
+	const std::vector<std::byte> manager {std::byte {0x48}, std::byte {0x8B}, std::byte {0x05}, std::byte {0xF9},
+	                                      std::byte {0x1F}, std::byte {0x00}, std::byte {0x00}, std::byte {0xC3}};
+	const std::vector<std::byte> settings {std::byte {0x48}, std::byte {0x8D}, std::byte {0x81}, std::byte {0x28},
+	                                       std::byte {0x01}, std::byte {0x00}, std::byte {0x00}, std::byte {0xC3}};
+	const game_layout::CodeAt codeAt = [&](std::uintptr_t address, std::size_t size) -> std::span<const std::byte> {
+		if (address == 0x7000 && size == manager.size())
+		{
+			return manager;
+		}
+		if (address == 0x8000 && size == settings.size())
+		{
+			return settings;
+		}
+		return {};
+	};
+	const auto layout = game_layout::ReadVideoSettingsLayout(code, base, codeAt);
+	ASSERT_TRUE(layout) << layout.GetError().message;
+	EXPECT_EQ(layout->managerGlobal, 0x7000u + 7 + 0x1FF9);
+	EXPECT_EQ(layout->settingsOffset, 0x128u);
+	const game_layout::CodeAt none = [](std::uintptr_t, std::size_t) { return std::span<const std::byte> {}; };
+	EXPECT_FALSE(game_layout::ReadVideoSettingsLayout(code, base, none));
+}
+
 } // namespace

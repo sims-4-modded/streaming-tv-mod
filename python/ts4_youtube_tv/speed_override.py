@@ -18,9 +18,13 @@ object has its own component, so the mod changes these values only on the compon
   sends the playlist again, except when the zone unloads or the game removes the TV.
 
 The mod does not change the class of the component or other TVs.
+
+The setting speed_override set to false turns this off. The setting speed_override_resend set to false changes the
+values without the send of the current playlist (a test in the game uses the two settings).
 """
 
 from . import log
+from . import settings
 from . import tv
 
 # The value of clock.ClockSpeedMode.SUPER_SPEED3, if the mod cannot import the clock module.
@@ -65,6 +69,9 @@ def apply(obj):
     """Set the mute speed and the distortion speed of the TV to the super speed. Return True if the values changed."""
     try:
         object_id = getattr(obj, "id", None)
+        if not settings.get("speed_override"):
+            log.write("speed_override: off in the settings; the object {} keeps its values".format(object_id))
+            return False
         component = tv.video_component(obj)
         if object_id is None or component is None:
             return False
@@ -75,7 +82,7 @@ def apply(obj):
         value = _super_speed()
         for name in old:
             setattr(component, name, value)
-        _write_playlist(obj, {name: value for name in old}, resend=True)
+        _write_playlist(obj, {name: value for name in old}, resend=bool(settings.get("speed_override_resend")))
         log.write("speed_override: the object {} mutes and distorts only at the super speed (old values: {})".format(
             object_id, ", ".join("{} {}".format(name, getattr(old[name], "name", old[name])) for name in old)))
         return True
@@ -103,7 +110,7 @@ def restore(object_id, obj=None, resend=True):
         if playlist is not None:
             # Change only the values that the mod set. A playlist with other values is not from the mod.
             ours = {name: old_value for name, old_value in old.items() if getattr(playlist, name, None) == value}
-            _write_playlist(owner, ours, resend=resend)
+            _write_playlist(owner, ours, resend=resend and bool(settings.get("speed_override_resend")))
         log.write("speed_override: the object {} has its old mute speed and distortion speed".format(object_id))
     except Exception:  # noqa: BLE001
         log.exception("speed_override: the restore of the object {} failed".format(object_id))

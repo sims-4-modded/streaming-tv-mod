@@ -89,4 +89,31 @@ ts4::Result<std::size_t> ReadFieldOffset(std::span<const std::byte> code, const 
 	return static_cast<std::size_t>(*value);
 }
 
+ts4::Result<std::uintptr_t> ReadRelativeTarget(std::span<const std::byte> code, std::uintptr_t codeAddress,
+                                               const RelativeRule& rule)
+{
+	auto signature = Signature::Parse(rule.pattern);
+	if (!signature)
+	{
+		return ts4::MakeError("the pattern of {} is not correct: {}", rule.name, signature.GetError().message);
+	}
+	if (rule.at + 4 > rule.end || rule.end > signature->Size())
+	{
+		return ts4::MakeError("the displacement of {} is not in its pattern", rule.name);
+	}
+	auto match = FindUniqueSignature(code, signature->Bytes(), rule.name);
+	if (!match)
+	{
+		return match.GetError();
+	}
+	std::uint32_t raw = 0;
+	for (std::size_t index = 0; index < 4; ++index)
+	{
+		raw |= std::uint32_t {std::to_integer<std::uint8_t>(code[*match + rule.at + index])} << (8 * index);
+	}
+	const auto displacement = static_cast<std::int64_t>(static_cast<std::int32_t>(raw));
+	const auto end = codeAddress + *match + rule.end;
+	return static_cast<std::uintptr_t>(static_cast<std::int64_t>(end) + displacement);
+}
+
 } // namespace ts4_mod::youtube_tv

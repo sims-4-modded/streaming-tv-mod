@@ -15,6 +15,10 @@ namespace
 
 /// The shortest time between two pumps from the callbacks of each frame.
 constexpr auto k_PumpInterval = std::chrono::milliseconds(4);
+/// The time between two diagnostic lines of the frames, and between two measures of the planes.
+constexpr auto k_ReportInterval = std::chrono::seconds(5);
+/// The diagnostic lines name only this count of channels, so that the log stays small.
+constexpr std::size_t k_MaxSeenChannels = 64;
 
 /// The audio ring of one video as the source of a voice. Only the thread of the audio reads it.
 class RingSource final: public PcmSource
@@ -82,6 +86,19 @@ void TvRuntime::SetListenerOffset(std::size_t offset)
 {
 	const std::lock_guard lock(_mutex);
 	_listenerOffset = offset;
+}
+
+void TvRuntime::SetVideoSettingsLayout(const game_layout::VideoSettingsLayout& layout)
+{
+	const std::lock_guard lock(_mutex);
+	_videoSettings = layout;
+}
+
+void TvRuntime::SetFrameWrite(FrameWriteMode mode)
+{
+	const std::lock_guard lock(_mutex);
+	_settings.frameWrite = mode;
+	Log(TS4_LOG_INFO, std::format("frames: the mode is now {}", FrameWriteModeName(mode)));
 }
 
 YoutubeTvSettings TvRuntime::Settings() const
@@ -388,6 +405,11 @@ void TvRuntime::OnSetPlaylist(std::uintptr_t component)
 	{
 		_sessions.BindChannel(*_pendingObject, channel);
 	}
+	if (_sessions.Find(*_pendingObject) != nullptr)
+	{
+		Log(TS4_LOG_INFO,
+		    std::format("frames: the playlist of the object {:#x} links the channel {:#x}", *_pendingObject, channel));
+	}
 	_pendingObject.reset();
 }
 
@@ -399,6 +421,9 @@ void TvRuntime::OnRenderFrame(std::uintptr_t renderer, std::uintptr_t frame)
 	std::int32_t helperId = 0;
 	game_layout::RendererLayout layout;
 	ScaleFilter filter {};
+	YuvRange range {};
+	FrameWriteMode mode {};
+	bool measure = false;
 	{
 		const std::lock_guard lock(_mutex);
 		++_renderCalls;
@@ -406,7 +431,7 @@ void TvRuntime::OnRenderFrame(std::uintptr_t renderer, std::uintptr_t frame)
 		{
 			PumpLocked();
 		}
-		if (!_renderer || !_client || _sessions.Sessions().empty())
+		if (!_renderer)
 		{
 			return;
 		}
@@ -416,26 +441,69 @@ void TvRuntime::OnRenderFrame(std::uintptr_t renderer, std::uintptr_t frame)
 		{
 			clipKey = ReadChannelClipKey(*_memory, channel, *_channel);
 		}
+		if (channel != 0 && _seenChannels.size() < k_MaxSeenChannels && _seenChannels.insert(channel).second)
+		{
+			const auto size = ReadRendererSize(*_memory, renderer, *_renderer);
+			const auto target = ReadGameFrame(*_memory, frame, *_renderer);
+			const auto clipText = clipKey
+			                          ? std::format("{:016x}:{:08x}:{:08x}", clipKey->instance, clipKey->type, clipKey->group)
+			                          : std::string("none");
+			const auto sizeText = size ? std::format("{}x{}", (*size)[0], (*size)[1]) : std::string("unknown");
+			const auto planeText =
+			    target ? std::format("{}x{}", target->planes[0].width, target->planes[0].height) : std::string("not correct");
+			const char* flipText = target ? (target->flip ? "on" : "off") : "unknown";
+			Log(TS4_LOG_INFO,
+			    std::format("frames: the first frame of the channel {:#x}: clip {}, target {}, planes {}, flip {}, {}", channel,
+			                clipText, sizeText, planeText, flipText, VideoSettingsTextLocked()));
+		}
+		if (!_sessions.Sessions().empty())
+		{
+			ReportFramesLocked();
+		}
+		if (!_client || _sessions.Sessions().empty())
+		{
+			return;
+		}
 		auto* session = _sessions.MatchChannel(channel, clipKey);
 		if (session == nullptr || session->state == SessionState::Failed)
 		{
 			return;
 		}
+		++_matchedCalls;
+		mode = _settings.frameWrite;
+		if (mode == FrameWriteMode::Off)
+		{
+			return;
+		}
 		video = _client->Video(session->helperId);
-		if (!video)
+		if (!video && mode == FrameWriteMode::Video)
 		{
 			return;
 		}
 		helperId = session->helperId;
 		layout = *_renderer;
 		filter = _settings.scaleFilter;
+		range = _settings.range;
+		const auto now = std::chrono::steady_clock::now();
+		if (now - _lastMeasure >= k_ReportInterval)
+		{
+			_lastMeasure = now;
+			measure = true;
+		}
 	}
 	// Only this thread reads the frames of the helper, so the triple buffer needs no lock.
-	auto& frames = video->Frames();
-	frames.TakeNewest();
-	if (frames.FrontFrameNumber() == 0)
+	std::uint64_t frontFrame = 0;
+	if (mode == FrameWriteMode::Video)
 	{
-		return;
+		auto& frames = video->Frames();
+		frames.TakeNewest();
+		frontFrame = frames.FrontFrameNumber();
+		if (frontFrame == 0)
+		{
+			const std::lock_guard lock(_mutex);
+			_frontFrame = 0;
+			return;
+		}
 	}
 	const auto target = ReadGameFrame(*_memory, frame, layout);
 	if (!target)
@@ -445,8 +513,37 @@ void TvRuntime::OnRenderFrame(std::uintptr_t renderer, std::uintptr_t frame)
 		        std::format("video {}: the frame of the game is not correct; the mod does not write it", helperId));
 		return;
 	}
-	const auto written = WriteI420Frame(frames.FrontPlanes(), *target, filter, frames.Range());
+	std::array<double, 3> before {};
+	if (measure)
+	{
+		before = PlaneMeans(*target);
+	}
+	ts4::Result<FrameWrite> written = FrameWrite::Copy;
+	if (mode == FrameWriteMode::Bars)
+	{
+		if (auto bars = WriteColourBars(*target, range); !bars)
+		{
+			written = bars.GetError();
+		}
+	}
+	else
+	{
+		auto& frames = video->Frames();
+		written = WriteI420Frame(frames.FrontPlanes(), *target, filter, frames.Range());
+	}
+	std::array<double, 3> after {};
+	if (measure && written)
+	{
+		after = PlaneMeans(*target);
+	}
 	const std::lock_guard lock(_mutex);
+	_frontFrame = frontFrame;
+	if (measure && written)
+	{
+		_meansBefore = before;
+		_meansAfter = after;
+		_measured = true;
+	}
 	if (!written)
 	{
 		LogOnce(std::format("write {}", helperId), TS4_LOG_WARN,
@@ -461,12 +558,53 @@ void TvRuntime::OnRenderFrame(std::uintptr_t renderer, std::uintptr_t frame)
 	}
 	if (session->framesWritten == 0)
 	{
-		Log(TS4_LOG_INFO, std::format("video {}: the first frame on the screen ({}x{} into {}x{}, {})", helperId,
-		                              frames.Width(), frames.Height(), target->planes[0].width, target->planes[0].height,
-		                              *written == FrameWrite::Copy ? "copy" : "letterbox"));
+		const auto sourceText = mode == FrameWriteMode::Video
+		                            ? std::format("{}x{}", video->Frames().Width(), video->Frames().Height())
+		                            : std::string("bars");
+		Log(TS4_LOG_INFO, std::format("video {}: the first frame on the screen ({} into {}x{}, {}, mode {})", helperId,
+		                              sourceText, target->planes[0].width, target->planes[0].height,
+		                              *written == FrameWrite::Copy ? "copy" : "letterbox", FrameWriteModeName(mode)));
 	}
 	++session->framesWritten;
 	++_framesWritten;
+}
+
+void TvRuntime::ReportFramesLocked()
+{
+	const auto now = std::chrono::steady_clock::now();
+	if (now - _lastReport < k_ReportInterval)
+	{
+		return;
+	}
+	_lastReport = now;
+	const auto means = [](const std::array<double, 3>& values) {
+		return std::format("Y {:.1f} U {:.1f} V {:.1f}", values[0], values[1], values[2]);
+	};
+	const auto beforeText = _measured ? means(_meansBefore) : std::string("not measured");
+	const auto afterText = _measured ? means(_meansAfter) : std::string("not measured");
+	Log(TS4_LOG_INFO, std::format("frames: mode {}, renderCalls {}, channels {}, calls for a video {}, framesWritten {}, "
+	                              "helper frame {}, before the write {}, after the write {}, {}",
+	                              FrameWriteModeName(_settings.frameWrite), _renderCalls, _seenChannels.size(), _matchedCalls,
+	                              _framesWritten, _frontFrame, beforeText, afterText, VideoSettingsTextLocked()));
+}
+
+std::string TvRuntime::VideoSettingsTextLocked() const
+{
+	if (!_videoSettings)
+	{
+		return "video settings unknown";
+	}
+	const auto manager = ReadValue<std::uintptr_t>(*_memory, _videoSettings->managerGlobal);
+	if (!manager || *manager == 0)
+	{
+		return "no video manager";
+	}
+	const auto flags = ReadValue<std::array<std::uint8_t, 2>>(*_memory, *manager + _videoSettings->settingsOffset);
+	if (!flags)
+	{
+		return "video settings not readable";
+	}
+	return std::format("video settings draw {} copy {}", (*flags)[0], (*flags)[1]);
 }
 
 void TvRuntime::OnListener(std::uintptr_t state)
@@ -506,6 +644,11 @@ nlohmann::json TvRuntime::Status()
 	    {"renderer", _renderer.has_value()}, {"channel", _channel.has_value()}, {"listener", _listenerOffset.has_value()}};
 	status["renderCalls"] = _renderCalls;
 	status["framesWritten"] = _framesWritten;
+	status["frameWrite"] = FrameWriteModeName(_settings.frameWrite);
+	status["channelsSeen"] = _seenChannels.size();
+	status["callsForVideo"] = _matchedCalls;
+	status["helperFrame"] = _frontFrame;
+	status["videoSettings"] = VideoSettingsTextLocked();
 	status["listenerKnown"] = _listener.has_value();
 	status["audio"] = _audio ? _audio->Status() : nlohmann::json(_audioFailed ? "failed" : "not started");
 	return status;

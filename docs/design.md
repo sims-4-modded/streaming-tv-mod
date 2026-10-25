@@ -130,6 +130,18 @@ while the TV plays. Options for the merger and the extender lane:
 8. The script mod calls `YoutubeTvSetSpeed` at each change of the clock, `YoutubeTvSetTransform` when the TV moves,
    `YoutubeTvStop` or `YoutubeTvStopAll` (zone teardown).
 
+## The diagnostic lines of the frames
+
+The DLL mod writes these lines to the log of the extender:
+
+- `frames: the playlist of the object X links the channel C`: a playlist of a TV with a session.
+- `frames: the first frame of the channel C`: the first RenderFrame of each channel (at most 64), with the clip key,
+  the size of the target, the size of the Y plane, the flip flag and the two flags of the video settings of the game.
+- `frames: mode M, renderCalls ...`: every 5 s while a session runs: the calls, the channels, the calls for a video,
+  `framesWritten`, the number of the newest frame of the helper, the mean Y, U and V of the planes before and after
+  the write, and the video settings (byte 0 permits the draw, byte 1 the copy of the planes). The mod finds the
+  video settings from the code of RenderFrame: the two calls before the test of the copy flag.
+
 ## The speed policy
 
 | `ClockSpeedMode` | Player | Audio |
@@ -220,7 +232,8 @@ The queries and the bridge use the same code (`TvRuntime`).
 `enabled`, `helperPath` (empty: `%LOCALAPPDATA%\Sims4Mods\youtube_tv\youtube_tv_host.exe`), `volume` (0 to 1, 0.8),
 `audioRange` (the distance of the half volume, 3), `maxSessions` (1 to 8, 2), `width` and `height` (640 and 368),
 `frameRate` (30), `matrix` (`bt601`, `bt709`), `range` (`limited`, `full`), `scaleFilter` (`bilinear`, `nearest`),
-`speed2Rate`, `speed3Rate` (0.25 to 2), `muteLevel` (1 to 5), and the axes: `rightHanded` (true), `cameraMatrix`
+`frameWrite` (`video`, `off`: the frame callback only counts, `bars`: colour bars with a white band at the top; for
+tests in the game, also `youtube_tv.frames`), `speed2Rate`, `speed3Rate` (0.25 to 2), `muteLevel` (1 to 5), and the axes: `rightHanded` (true), `cameraMatrix`
 (`worldRows`, `worldColumns`, `viewRows`, `viewColumns`), `cameraLooksAlongNegativeZ` (true), `modelFront`
 ([0, 0, 1]), `modelTop` ([0, 1, 0]).
 

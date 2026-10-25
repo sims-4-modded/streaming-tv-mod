@@ -9,6 +9,13 @@
 - youtube_tv.status: show the bridge, the settings, the sessions and the last speed.
 - youtube_tv.info: show the values of the Video component of the nearest TV (mute_speed, distortion_speed, the
   playlist).
+
+The commands for a test in the game:
+
+- youtube_tv.watch_test: do the same as the OK of the dialog, with the URL test_url of the settings.
+- youtube_tv.watch_game: push only the watch interaction of the game on the nearest TV, without a video.
+- youtube_tv.camera [distance]: move the camera to the front of the nearest TV.
+- youtube_tv.frames <video|off|bars>: tell the DLL mod what to write into the frames.
 """
 
 import sims4.commands
@@ -20,6 +27,7 @@ from . import session
 from . import settings
 from . import tv
 from . import urls
+from . import watch
 
 
 def _output(text, connection):
@@ -116,6 +124,67 @@ def run_info(connection):
     return True
 
 
+def run_watch_test(connection):
+    """Start the video of the URL test_url on the nearest TV, as the OK of the dialog does."""
+    url = settings.get("test_url")
+    if not url:
+        _output("The setting test_url is empty.", connection)
+        return False
+    return run_play((url,), connection)
+
+
+def run_watch_game(connection):
+    """Push the watch interaction of the game on the active Sim for the nearest TV, without a video of the mod."""
+    sim = _active_sim()
+    target = tv.nearest_tv(sim)
+    if target is None:
+        _output("There is no TV that works on this lot.", connection)
+        return False
+    interaction, error = watch.push_watch(sim, target)
+    if interaction is None:
+        _output("The Sim cannot watch the TV: {}".format(error), connection)
+        return False
+    _output("The active Sim watches the TV {} without a video of the mod.".format(target.id), connection)
+    return True
+
+
+DEFAULT_CAMERA_DISTANCE = 2.5
+CAMERA_HEIGHT = 0.3
+
+
+def run_camera(distance_text, connection):
+    """Move the camera to the front of the nearest TV, at the distance in units of the game."""
+    try:
+        distance = float(distance_text) if distance_text else DEFAULT_CAMERA_DISTANCE
+    except ValueError:
+        _output("Usage: youtube_tv.camera [distance]", connection)
+        return False
+    target = tv.nearest_tv(_active_sim())
+    if target is None:
+        _output("There is no TV that works on this lot.", connection)
+        return False
+    import camera
+    import sims4.math
+    position = target.position
+    forward = target.forward
+    eye = sims4.math.Vector3(position.x + forward.x * distance, position.y + CAMERA_HEIGHT + forward.y * distance,
+                             position.z + forward.z * distance)
+    camera.walls_up_override(walls_up=True)
+    camera.focus_on_object_from_position(obj_position=position, camera_position=eye)
+    _output("The camera looks at the TV {} from {:.1f} units.".format(target.id, distance), connection)
+    return True
+
+
+def run_frames(mode, connection):
+    """Tell the DLL mod what to write into the frames."""
+    if mode not in ("video", "off", "bars"):
+        _output("Usage: youtube_tv.frames <video|off|bars>", connection)
+        return False
+    ok, error = native.set_frame_mode(mode)
+    _output("Frames: {}.".format(mode) if ok else "The mode did not change: {}".format(error), connection)
+    return ok
+
+
 def _safe(function, connection, *args):
     try:
         return function(*args, connection)
@@ -146,3 +215,23 @@ def youtube_tv_status(_connection=None):
 @sims4.commands.Command("youtube_tv.info", command_type=sims4.commands.CommandType.Live)
 def youtube_tv_info(_connection=None):
     return _safe(run_info, _connection)
+
+
+@sims4.commands.Command("youtube_tv.watch_test", command_type=sims4.commands.CommandType.Live)
+def youtube_tv_watch_test(_connection=None):
+    return _safe(run_watch_test, _connection)
+
+
+@sims4.commands.Command("youtube_tv.watch_game", command_type=sims4.commands.CommandType.Live)
+def youtube_tv_watch_game(_connection=None):
+    return _safe(run_watch_game, _connection)
+
+
+@sims4.commands.Command("youtube_tv.camera", command_type=sims4.commands.CommandType.Live)
+def youtube_tv_camera(distance=None, _connection=None):
+    return _safe(run_camera, _connection, distance)
+
+
+@sims4.commands.Command("youtube_tv.frames", command_type=sims4.commands.CommandType.Live)
+def youtube_tv_frames(mode=None, _connection=None):
+    return _safe(run_frames, _connection, mode)

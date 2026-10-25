@@ -6,8 +6,10 @@
 
 import unittest
 
+import camera
 import support
 import sims4.commands
+from ts4_youtube_tv import settings
 from ts4_youtube_tv import session
 
 URL = "https://youtu.be/M7lc1UVf-VE?t=10"
@@ -76,6 +78,39 @@ class CommandTest(unittest.TestCase):
         self.assertIn("mute_speed = <ClockSpeedMode.SUPER_SPEED3: 5>", text)
         self.assertIn("distortion_speed = <ClockSpeedMode.SUPER_SPEED3: 5>", text)
         self.assertIn("session = True", text)
+
+    def test_watch_test_uses_the_url_of_the_settings(self):
+        self.assertFalse(command("youtube_tv.watch_test")(_connection=1))
+        self.assertIn("test_url is empty", sims4.commands.outputs[-1])
+        settings.set_values({"test_url": URL})
+        try:
+            self.assertTrue(command("youtube_tv.watch_test")(_connection=1))
+            self.assertTrue(session.has_session(self.near.id))
+            self.assertEqual(self.dll.YoutubeTvPlay.calls[0][1], URL.encode("utf-8"))
+        finally:
+            settings.set_values({})
+
+    def test_watch_game_pushes_only_the_watch(self):
+        self.assertTrue(command("youtube_tv.watch_game")(_connection=1))
+        self.assertIs(self.sim.pushed[0][1], self.near)
+        self.assertEqual(session.sessions(), {})
+        self.assertEqual(self.dll.YoutubeTvPlay.calls, [])
+
+    def test_camera_looks_at_the_tv_from_the_front(self):
+        camera.calls.clear()
+        self.assertTrue(command("youtube_tv.camera")("2", _connection=1))
+        self.assertEqual(camera.calls[0], ("walls_up", True))
+        _, position, eye = camera.calls[1]
+        self.assertIs(position, self.near.position)
+        self.assertEqual((eye.x, eye.z), (1.0, 3.0))
+        self.assertFalse(command("youtube_tv.camera")("near", _connection=1))
+
+    def test_frames_sets_the_mode_of_the_dll(self):
+        self.assertTrue(command("youtube_tv.frames")("bars", _connection=1))
+        self.assertEqual(self.dll.set_frame_mode.calls, [("bars",)])
+        self.assertFalse(command("youtube_tv.frames")("pattern", _connection=1))
+        support.use_dll(None)
+        self.assertFalse(command("youtube_tv.frames")("off", _connection=1))
 
     def test_a_command_never_raises(self):
         support.services.objects = None

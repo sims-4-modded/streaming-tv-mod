@@ -5,8 +5,10 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
 #include <array>
+#include <functional>
 #include <span>
 
 #include <common/Result.h>
@@ -177,6 +179,43 @@ inline constexpr DisplacementRule k_ListenerCameraMatrix {.name = "listener came
                                                           .min = 0,
                                                           .max = 0x70,
                                                           .alignment = 16};
+
+/// In the function that copies the planes: the call that gets the video manager, the call that gets the video
+/// settings of the manager, and the test of the flag that permits the copy of the planes.
+inline constexpr std::string_view k_VideoSettingsCallsPattern = "E8 ?? ?? ?? ?? 48 8B C8 E8 ?? ?? ?? ?? 80 78 01 00 74";
+inline constexpr RelativeRule k_VideoManagerCall {
+    .name = "video manager call", .pattern = k_VideoSettingsCallsPattern, .at = 1, .end = 5};
+inline constexpr RelativeRule k_VideoSettingsCall {
+    .name = "video settings call", .pattern = k_VideoSettingsCallsPattern, .at = 9, .end = 13};
+/// The function that gets the video manager reads one global variable and returns.
+inline constexpr std::size_t k_VideoManagerGetterSize = 8;
+inline constexpr RelativeRule k_VideoManagerGlobal {
+    .name = "video manager global", .pattern = "48 8B 05 ?? ?? ?? ?? C3", .at = 3, .end = 7};
+/// The function that gets the video settings adds an offset to the manager and returns.
+inline constexpr std::size_t k_VideoSettingsGetterSize = 8;
+inline constexpr DisplacementRule k_VideoSettingsOffset {.name = "video settings",
+                                                         .pattern = "48 8D 81 ?? ?? ?? ?? C3",
+                                                         .at = 3,
+                                                         .size = DisplacementSize::Dword,
+                                                         .min = 0,
+                                                         .max = 0x1000,
+                                                         .alignment = 1};
+
+/// The place of the video settings: the global variable that holds the video manager, and the offset of the settings
+/// in the manager. Byte 0 of the settings permits the draw of a frame, and byte 1 permits the copy of the planes.
+struct VideoSettingsLayout
+{
+	std::uintptr_t managerGlobal = 0;
+	std::size_t settingsOffset = 0;
+};
+
+/// Gives the code at an address, or an empty span if the address is not in the code of the game.
+using CodeAt = std::function<std::span<const std::byte>(std::uintptr_t address, std::size_t size)>;
+
+/// Read the place of the video settings from the code of the function that copies the planes (at `codeAddress`) and
+/// from the code of the two functions that it calls.
+[[nodiscard]] ts4::Result<VideoSettingsLayout> ReadVideoSettingsLayout(std::span<const std::byte> renderFrameCode,
+                                                                       std::uintptr_t codeAddress, const CodeAt& codeAt);
 
 /// The offsets of the frame, of its planes and of the renderer.
 struct RendererLayout

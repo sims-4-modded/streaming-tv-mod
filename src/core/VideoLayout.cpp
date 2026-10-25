@@ -108,4 +108,40 @@ ts4::Result<std::size_t> ReadListenerLayout(std::span<const std::byte> listenerC
 	return ReadFieldOffset(listenerCode, k_ListenerCameraMatrix);
 }
 
+ts4::Result<VideoSettingsLayout> ReadVideoSettingsLayout(std::span<const std::byte> renderFrameCode, std::uintptr_t codeAddress,
+                                                         const CodeAt& codeAt)
+{
+	auto managerCall = ReadRelativeTarget(renderFrameCode, codeAddress, k_VideoManagerCall);
+	if (!managerCall)
+	{
+		return managerCall.GetError();
+	}
+	auto settingsCall = ReadRelativeTarget(renderFrameCode, codeAddress, k_VideoSettingsCall);
+	if (!settingsCall)
+	{
+		return settingsCall.GetError();
+	}
+	const auto managerCode = codeAt(*managerCall, k_VideoManagerGetterSize);
+	if (managerCode.size() != k_VideoManagerGetterSize)
+	{
+		return ts4::MakeError("the function that gets the video manager is not in the code of the game");
+	}
+	auto global = ReadRelativeTarget(managerCode, *managerCall, k_VideoManagerGlobal);
+	if (!global)
+	{
+		return global.GetError();
+	}
+	const auto settingsCode = codeAt(*settingsCall, k_VideoSettingsGetterSize);
+	if (settingsCode.size() != k_VideoSettingsGetterSize)
+	{
+		return ts4::MakeError("the function that gets the video settings is not in the code of the game");
+	}
+	auto offset = ReadFieldOffset(settingsCode, k_VideoSettingsOffset);
+	if (!offset)
+	{
+		return offset.GetError();
+	}
+	return VideoSettingsLayout {.managerGlobal = *global, .settingsOffset = *offset};
+}
+
 } // namespace ts4_mod::youtube_tv::game_layout

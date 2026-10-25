@@ -189,6 +189,7 @@ ts4::Result<YoutubeTvSettings> ParseYoutubeTvSettings(const nlohmann::json& json
 	reader.Choice("matrix", settings.matrix, ParseYuvMatrix);
 	reader.Choice("range", settings.range, ParseYuvRange);
 	reader.Choice("scaleFilter", settings.scaleFilter, ParseScaleFilter);
+	reader.Choice("frameWrite", settings.frameWrite, ParseFrameWriteMode);
 	reader.Number("speed2Rate", settings.speed.speed2Rate, host::k_MinPlaybackRate, host::k_MaxPlaybackRate);
 	reader.Number("speed3Rate", settings.speed.speed3Rate, host::k_MinPlaybackRate, host::k_MaxPlaybackRate);
 	reader.Count("muteLevel", settings.speed.muteLevel, 1, k_NeverMuteLevel);
@@ -236,6 +237,7 @@ nlohmann::json YoutubeTvSettingsJson(const YoutubeTvSettings& settings)
 	    {"matrix", YuvMatrixName(settings.matrix)},
 	    {"range", YuvRangeName(settings.range)},
 	    {"scaleFilter", settings.scaleFilter == ScaleFilter::Nearest ? "nearest" : "bilinear"},
+	    {"frameWrite", FrameWriteModeName(settings.frameWrite)},
 	    {"speed2Rate", settings.speed.speed2Rate},
 	    {"speed3Rate", settings.speed.speed3Rate},
 	    {"muteLevel", settings.speed.muteLevel},
