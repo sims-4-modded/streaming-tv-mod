@@ -223,41 +223,61 @@ TEST(Sessions, MatchesTheScreenKeyWhenTheChannelIsNotKnown)
 constexpr ScreenKey k_News {.instance = 0x5D630A58015C3E89, .type = 0x545AC67A, .group = 0x00BF458B};
 constexpr ScreenKey k_Music {.instance = 0x0D432B7F5C14E35D, .type = 0x376840D7, .group = 0};
 
+using namespace std::chrono_literals;
+
+/// The time of the lists in the tests of the clip rule. The link calls come later than the window of the time rule.
+constexpr auto k_ListTime = 1000ms;
+constexpr auto k_Later = 60000ms;
+
+/// The object that the call linked, with the rule that it used.
+std::optional<std::uint64_t> Link(SessionManager& manager, std::uintptr_t channel, const ScreenKey& key,
+                                  std::chrono::milliseconds now = k_Later,
+                                  SessionManager::LinkRule rule = SessionManager::LinkRule::Clip)
+{
+	const auto linked = manager.LinkChannelByClip(channel, key, now);
+	if (!linked)
+	{
+		return std::nullopt;
+	}
+	EXPECT_EQ(linked->rule, rule);
+	return linked->objectId;
+}
+
 TEST(Sessions, ThePlaylistOfTheObjectLinksTheChannelThatPlaysItsClip)
 {
 	SessionManager manager({});
 	ASSERT_TRUE(manager.Play(k_Tv, k_Url));
-	manager.NotePlaylist(k_Tv, {k_Music, k_News});
+	manager.NotePlaylist(k_Tv, {k_Music, k_News}, k_ListTime);
 	// A channel with a clip that is not in the list stays free.
-	EXPECT_EQ(manager.LinkChannelByClip(0xA000, ScreenKey {.instance = 1, .type = 2}), std::nullopt);
+	EXPECT_EQ(Link(manager, 0xA000, ScreenKey {.instance = 1, .type = 2}), std::nullopt);
 	EXPECT_EQ(manager.MatchChannel(0xA000, std::nullopt), nullptr);
-	EXPECT_EQ(manager.LinkChannelByClip(0xA000, k_News), k_Tv);
+	EXPECT_EQ(Link(manager, 0xA000, k_News), k_Tv);
 	EXPECT_EQ(manager.MatchChannel(0xA000, std::nullopt), manager.Find(k_Tv));
 	// The link stays: the second call makes no new link.
-	EXPECT_EQ(manager.LinkChannelByClip(0xA000, k_News), std::nullopt);
-	EXPECT_EQ(manager.LinkChannelByClip(0xA000, k_Music), std::nullopt);
-	EXPECT_EQ(manager.LinkChannelByClip(0, k_News), std::nullopt);
+	EXPECT_EQ(Link(manager, 0xA000, k_News), std::nullopt);
+	EXPECT_EQ(Link(manager, 0xA000, k_Music), std::nullopt);
+	EXPECT_EQ(Link(manager, 0, k_News), std::nullopt);
 }
 
 TEST(Sessions, AShownPlaylistDoesNotTakeASecondChannel)
 {
 	SessionManager manager({});
-	manager.NotePlaylist(k_Tv, {k_News});
-	EXPECT_EQ(manager.LinkChannelByClip(0xA000, k_News), k_Tv);
+	manager.NotePlaylist(k_Tv, {k_News}, k_ListTime);
+	EXPECT_EQ(Link(manager, 0xA000, k_News), k_Tv);
 	// Another channel plays the same clip, and no other object got it: the link does not move.
-	EXPECT_EQ(manager.LinkChannelByClip(0xB000, k_News), std::nullopt);
-	EXPECT_EQ(manager.LinkChannelByClip(0xA000, k_News), std::nullopt);
+	EXPECT_EQ(Link(manager, 0xB000, k_News, k_ListTime + 10ms), std::nullopt);
+	EXPECT_EQ(Link(manager, 0xA000, k_News), std::nullopt);
 }
 
 TEST(Sessions, TwoTvsWithTheSameClipGetTheirOwnChannels)
 {
 	SessionManager manager({});
 	ASSERT_TRUE(manager.Play(k_Tv, k_Url));
-	manager.NotePlaylist(k_OtherTv, {k_News});
-	manager.NotePlaylist(k_Tv, {k_News});
+	manager.NotePlaylist(k_OtherTv, {k_News}, k_ListTime);
+	manager.NotePlaylist(k_Tv, {k_News}, k_ListTime);
 	// The newest list comes first.
-	EXPECT_EQ(manager.LinkChannelByClip(0xA000, k_News), k_Tv);
-	EXPECT_EQ(manager.LinkChannelByClip(0xB000, k_News), k_OtherTv);
+	EXPECT_EQ(Link(manager, 0xA000, k_News), k_Tv);
+	EXPECT_EQ(Link(manager, 0xB000, k_News), k_OtherTv);
 	EXPECT_EQ(manager.MatchChannel(0xA000, std::nullopt), manager.Find(k_Tv));
 	EXPECT_EQ(manager.MatchChannel(0xB000, std::nullopt), nullptr);
 }
@@ -265,29 +285,29 @@ TEST(Sessions, TwoTvsWithTheSameClipGetTheirOwnChannels)
 TEST(Sessions, AnObjectWithNoChannelComesFirst)
 {
 	SessionManager manager({});
-	manager.NotePlaylist(k_OtherTv, {k_News});
-	EXPECT_EQ(manager.LinkChannelByClip(0xB000, k_News), k_OtherTv);
+	manager.NotePlaylist(k_OtherTv, {k_News}, k_ListTime);
+	EXPECT_EQ(Link(manager, 0xB000, k_News), k_OtherTv);
 	// The first TV has a channel and gets a new list. The other TV has a list that no channel played.
 	manager.BindChannel(k_Tv, 0xA000);
-	manager.NotePlaylist(k_Tv, {k_News});
-	manager.NotePlaylist(k_OtherTv, {k_Music});
-	manager.NotePlaylist(0x9999, {k_Music});
-	manager.NotePlaylist(k_Tv, {k_Music});
+	manager.NotePlaylist(k_Tv, {k_News}, k_ListTime);
+	manager.NotePlaylist(k_OtherTv, {k_Music}, k_ListTime);
+	manager.NotePlaylist(0x9999, {k_Music}, k_ListTime);
+	manager.NotePlaylist(k_Tv, {k_Music}, k_ListTime);
 	// A new channel plays the music clip: it goes to an object with no channel, not to the first TV.
-	EXPECT_EQ(manager.LinkChannelByClip(0xC000, k_Music), 0x9999U);
+	EXPECT_EQ(Link(manager, 0xC000, k_Music), 0x9999U);
 	// The channel of the first TV plays its new clip: the link stays.
-	EXPECT_EQ(manager.LinkChannelByClip(0xA000, k_Music), std::nullopt);
+	EXPECT_EQ(Link(manager, 0xA000, k_Music), std::nullopt);
 }
 
 TEST(Sessions, ANewChannelAtTheAddressOfAnOldChannelMovesTheLink)
 {
 	SessionManager manager({});
 	ASSERT_TRUE(manager.Play(k_Tv, k_Url));
-	manager.NotePlaylist(k_OtherTv, {k_Music});
-	EXPECT_EQ(manager.LinkChannelByClip(0xA000, k_Music), k_OtherTv);
+	manager.NotePlaylist(k_OtherTv, {k_Music}, k_ListTime);
+	EXPECT_EQ(Link(manager, 0xA000, k_Music), k_OtherTv);
 	// The game removed the channel of the other TV and made the channel of our TV at the same address.
-	manager.NotePlaylist(k_Tv, {k_News});
-	EXPECT_EQ(manager.LinkChannelByClip(0xA000, k_News), k_Tv);
+	manager.NotePlaylist(k_Tv, {k_News}, k_ListTime);
+	EXPECT_EQ(Link(manager, 0xA000, k_News), k_Tv);
 	EXPECT_EQ(manager.MatchChannel(0xA000, std::nullopt), manager.Find(k_Tv));
 }
 
@@ -295,11 +315,62 @@ TEST(Sessions, AnEmptyListKeepsTheLink)
 {
 	SessionManager manager({});
 	ASSERT_TRUE(manager.Play(k_Tv, k_Url));
-	manager.NotePlaylist(k_Tv, {k_News});
-	EXPECT_EQ(manager.LinkChannelByClip(0xA000, k_News), k_Tv);
-	manager.NotePlaylist(k_Tv, {});
-	EXPECT_EQ(manager.LinkChannelByClip(0xA000, k_News), std::nullopt);
+	manager.NotePlaylist(k_Tv, {k_News}, k_ListTime);
+	EXPECT_EQ(Link(manager, 0xA000, k_News), k_Tv);
+	manager.NotePlaylist(k_Tv, {}, k_Later);
+	EXPECT_EQ(Link(manager, 0xA000, k_News, k_Later + 10ms), std::nullopt);
 	EXPECT_EQ(manager.MatchChannel(0xA000, std::nullopt), manager.Find(k_Tv));
+}
+
+// The clip of the channel of a TV in the game: not the clip of its list.
+constexpr ScreenKey k_TvClip {.instance = 0xEA6FC4038E0F1EC3, .type = 0x376840D7, .group = 0};
+constexpr ScreenKey k_TvClip2 {.instance = 0x1234, .type = 0x376840D7, .group = 0};
+constexpr auto k_Time = SessionManager::LinkRule::Time;
+
+TEST(Sessions, ANewClipJustAfterAListLinksTheChannelByTheTime)
+{
+	SessionManager manager({});
+	ASSERT_TRUE(manager.Play(k_Tv, k_Url));
+	manager.NotePlaylist(k_Tv, {k_News}, 5000ms);
+	EXPECT_EQ(Link(manager, 0xA000, k_TvClip, 5016ms, k_Time), k_Tv);
+	EXPECT_EQ(manager.MatchChannel(0xA000, std::nullopt), manager.Find(k_Tv));
+	// The same clip, and the next clip of the channel with no new list: the link stays.
+	EXPECT_EQ(Link(manager, 0xA000, k_TvClip, 5050ms), std::nullopt);
+	EXPECT_EQ(Link(manager, 0xA000, k_TvClip2, 9000ms), std::nullopt);
+	EXPECT_EQ(manager.MatchChannel(0xA000, std::nullopt), manager.Find(k_Tv));
+}
+
+TEST(Sessions, TheTimeRuleNeedsANewClipInTheWindow)
+{
+	SessionManager manager({});
+	// The channel plays its clip before the list.
+	EXPECT_EQ(Link(manager, 0xA000, k_TvClip, 4000ms), std::nullopt);
+	manager.NotePlaylist(k_Tv, {k_News}, 5000ms);
+	EXPECT_EQ(Link(manager, 0xA000, k_TvClip, 5016ms), std::nullopt);
+	// A new channel after the window.
+	EXPECT_EQ(Link(manager, 0xB000, k_TvClip, 5000ms + SessionManager::k_LinkWindow + 1ms), std::nullopt);
+	// An empty list (the TV turns off) does not link.
+	manager.NotePlaylist(k_OtherTv, {}, 7000ms);
+	EXPECT_EQ(Link(manager, 0xC000, k_TvClip, 7010ms), std::nullopt);
+	// A new channel in the window links.
+	manager.NotePlaylist(k_Tv, {k_News}, 8000ms);
+	EXPECT_EQ(Link(manager, 0xC000, k_TvClip2, 8020ms, k_Time), k_Tv);
+}
+
+TEST(Sessions, TheTimeRuleTakesTheNewestListThatNoChannelShowed)
+{
+	SessionManager manager({});
+	manager.NotePlaylist(k_OtherTv, {k_News}, 5000ms);
+	manager.NotePlaylist(k_Tv, {k_News}, 5010ms);
+	EXPECT_EQ(Link(manager, 0xA000, k_TvClip, 5020ms, k_Time), k_Tv);
+	EXPECT_EQ(Link(manager, 0xB000, k_TvClip2, 5030ms, k_Time), k_OtherTv);
+	// The owner of a channel gets a new list, and its channel starts a new clip: the link stays.
+	manager.NotePlaylist(k_Tv, {k_News}, 9000ms);
+	EXPECT_EQ(Link(manager, 0xA000, k_TvClip2, 9020ms), std::nullopt);
+	// A clip of a list goes before the time rule.
+	manager.NotePlaylist(k_OtherTv, {k_Music}, 12000ms);
+	manager.NotePlaylist(0x9999, {k_News}, 12005ms);
+	EXPECT_EQ(Link(manager, 0xC000, k_Music, 12010ms), k_OtherTv);
 }
 
 TEST(Sessions, AnyObjectTakesTheFirstFreeChannel)

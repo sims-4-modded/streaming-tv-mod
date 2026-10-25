@@ -120,6 +120,17 @@ to its channel by the clip:
    If the object of the channel does not have that clip in its newest list, the channel goes to the object whose
    newest list has the clip and that no channel showed yet. An object with no channel comes first, then the newest
    list (`SessionManager::LinkChannelByClip`).
+3. The time rule, for the TVs: when a channel starts a clip that is in no list, the channel goes to the object whose
+   newest list no channel showed yet and came in the last 1.5 s (the newest list first).
+
+Rule 3 is necessary. Game start 1 of the fifth test (`D:\sims_4\runs\2026-10-25-tv-fifth\notes.md`) showed that
+the channel of a TV does not play the key of its list. The playlist of our TV had one key of the type `0x545AC67A`
+(`efe29ab011f5411a:545ac67a:00bf458b`), and 16 ms later a new channel showed its first frame with a VP6 key
+(`ea6fc4038e0f1ec3:376840d7:00000000`) that no message had. The code of the channel does not explain the change:
+`SetPlaylist` gives each key to the channel (slot +0x58, `0x017C36D0`, a deque of 24-byte entries at channel
++0xB8..+0x108), and the open of a clip (`0x017C43C0`) copies the entry that it opens into channel +0xA0. The other
+video objects (lists with a `0x376840D7` key) linked by the same clip. Open point: where the client changes a
+`0x545AC67A` key into a VP6 clip (a different path than `SetPlaylist`, or a resource that lists clips).
 
 The other two callbacks of the mod (`RenderFrame`, `UpdateListenerFromCamera`) and the two hooks of the extender are
 safe with the hook manager as it is now.

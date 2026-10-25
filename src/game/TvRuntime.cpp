@@ -28,6 +28,12 @@ std::string ClipKeyText(const ScreenKey& key)
 	return std::format("{:016x}:{:08x}:{:08x}", key.instance, key.type, key.group);
 }
 
+/// The time of the steady clock in milliseconds, for the link of a channel.
+std::chrono::milliseconds NowMs()
+{
+	return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch());
+}
+
 /// The audio ring of one video as the source of a voice. Only the thread of the audio reads it.
 class RingSource final: public PcmSource
 {
@@ -415,7 +421,7 @@ void TvRuntime::OnPlaylistMessage(std::uintptr_t message)
 	}
 	if (objectId && keys)
 	{
-		_sessions.NotePlaylist(*objectId, std::move(*keys));
+		_sessions.NotePlaylist(*objectId, std::move(*keys), NowMs());
 	}
 }
 
@@ -449,13 +455,15 @@ void TvRuntime::OnRenderFrame(std::uintptr_t renderer, std::uintptr_t frame)
 		}
 		if (clipKey)
 		{
-			if (const auto linked = _sessions.LinkChannelByClip(channel, *clipKey))
+			if (const auto linked = _sessions.LinkChannelByClip(channel, *clipKey, NowMs()))
 			{
-				if (_linkLines < k_MaxPlaylistLines || _sessions.Find(*linked) != nullptr)
+				if (_linkLines < k_MaxPlaylistLines || _sessions.Find(linked->objectId) != nullptr)
 				{
 					++_linkLines;
-					Log(TS4_LOG_INFO, std::format("frames: the playlist of the object {:#x} links the channel {:#x} (clip {})",
-					                              *linked, channel, ClipKeyText(*clipKey)));
+					const char* rule = linked->rule == SessionManager::LinkRule::Clip ? "the same clip" : "the time";
+					Log(TS4_LOG_INFO,
+					    std::format("frames: the playlist of the object {:#x} links the channel {:#x} (clip {}, by {})",
+					                linked->objectId, channel, ClipKeyText(*clipKey), rule));
 				}
 			}
 		}

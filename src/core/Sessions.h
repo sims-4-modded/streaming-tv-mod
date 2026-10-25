@@ -8,6 +8,7 @@
 #include <cstdint>
 
 #include <array>
+#include <chrono>
 #include <map>
 #include <optional>
 #include <string>
@@ -134,14 +135,35 @@ public:
 	void SetScreenKey(std::uint64_t objectId, const ScreenKey& key);
 	/// Keep the video channel of an object.
 	void BindChannel(std::uint64_t objectId, std::uintptr_t channel);
-	/// Keep the clip keys of the newest list of clips that the game gave to an object.
-	void NotePlaylist(std::uint64_t objectId, std::vector<ScreenKey> keys);
-	/// Link a channel to an object by the clip that the channel plays now. The rules:
+	/// Keep the clip keys of the newest list of clips that the game gave to an object at the time `now`.
+	void NotePlaylist(std::uint64_t objectId, std::vector<ScreenKey> keys, std::chrono::milliseconds now);
+
+	/// The rule that made a new link of a channel.
+	enum class LinkRule
+	{
+		Clip, ///< The newest list of the object has the clip of the channel.
+		Time, ///< The channel started a new clip just after the object got its newest list.
+	};
+	struct ChannelLink
+	{
+		std::uint64_t objectId = 0;
+		LinkRule rule = LinkRule::Clip;
+	};
+	/// The longest time from a list of clips to the first frame of its clip, for the rule `LinkRule::Time`.
+	static constexpr std::chrono::milliseconds k_LinkWindow {1500};
+
+	/// Link a channel to an object by the clip that the channel plays at the time `now`. "Not shown" below means that
+	/// no channel showed a clip of the newest list of the object yet. The rules, in this order:
 	/// 1. If the object of the channel has this clip in its newest list (or has an empty list), the link stays.
-	/// 2. Else the channel goes to the object whose newest list has this clip and has no channel that played it yet.
-	///    An object with no channel comes first. Of these, the object with the newest list comes first.
-	/// The result is the object id if the call made a new link.
-	[[nodiscard]] std::optional<std::uint64_t> LinkChannelByClip(std::uintptr_t channel, const ScreenKey& clipKey);
+	/// 2. Else the channel goes to an object whose newest list has this clip and is not shown. An object with no
+	///    channel comes first. Of these, the object with the newest list comes first.
+	/// 3. Else, if the channel plays a different clip than at the last call, the channel goes to the object whose
+	///    newest list is not shown and came in the last `k_LinkWindow`. The newest list comes first. A TV of the
+	///    game needs this rule: the clip of its list is not the clip that its channel plays.
+	/// 4. Else the link stays.
+	/// The result has the object id if the call made a new link.
+	[[nodiscard]] std::optional<ChannelLink> LinkChannelByClip(std::uintptr_t channel, const ScreenKey& clipKey,
+	                                                           std::chrono::milliseconds now);
 
 	/// Find the session that shows its video on this channel. `clipKey` is the key of the clip that the channel plays
 	/// now, if the mod could read it. The order:
@@ -175,6 +197,7 @@ private:
 		/// The clip keys of the newest list of clips, and the number of that list. The numbers increase.
 		std::vector<ScreenKey> playlist;
 		std::uint64_t playlistNumber = 0;
+		std::chrono::milliseconds playlistTime {};
 		/// The number of the list that a channel of the object played last.
 		std::uint64_t shownNumber = 0;
 	};
@@ -188,6 +211,10 @@ private:
 	std::map<std::uint64_t, KnownObject> _objects;
 	std::int32_t _nextHelperId = 1;
 	std::uint64_t _nextPlaylistNumber = 1;
+	/// The clip of each channel at the last link call.
+	std::map<std::uintptr_t, ScreenKey> _channelClips;
+	/// The limit of channels in `_channelClips`.
+	static constexpr std::size_t k_MaxChannelClips = 256;
 	ClockSpeedMode _mode = ClockSpeedMode::Normal;
 	bool _superSpeed = false;
 };

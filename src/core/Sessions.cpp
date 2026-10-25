@@ -204,22 +204,40 @@ void SessionManager::BindChannel(std::uint64_t objectId, std::uintptr_t channel)
 	Known(objectId).channel = channel;
 }
 
-void SessionManager::NotePlaylist(std::uint64_t objectId, std::vector<ScreenKey> keys)
+void SessionManager::NotePlaylist(std::uint64_t objectId, std::vector<ScreenKey> keys, std::chrono::milliseconds now)
 {
 	auto& known = Known(objectId);
 	known.playlist = std::move(keys);
 	known.playlistNumber = _nextPlaylistNumber++;
+	known.playlistTime = now;
 }
 
-std::optional<std::uint64_t> SessionManager::LinkChannelByClip(std::uintptr_t channel, const ScreenKey& clipKey)
+std::optional<SessionManager::ChannelLink> SessionManager::LinkChannelByClip(std::uintptr_t channel, const ScreenKey& clipKey,
+                                                                             std::chrono::milliseconds now)
 {
 	if (channel == 0)
 	{
 		return std::nullopt;
 	}
+	bool changed = true;
+	if (const auto last = _channelClips.find(channel); last != _channelClips.end())
+	{
+		changed = last->second != clipKey;
+		last->second = clipKey;
+	}
+	else
+	{
+		if (_channelClips.size() >= k_MaxChannelClips)
+		{
+			_channelClips.clear();
+		}
+		_channelClips.emplace(channel, clipKey);
+	}
 	const auto hasClip = [&clipKey](const KnownObject& known) {
 		return std::ranges::find(known.playlist, clipKey) != known.playlist.end();
 	};
+	const auto notShown = [](const KnownObject& known) { return known.playlistNumber > known.shownNumber; };
+	std::optional<std::uint64_t> owner;
 	for (auto& [id, known] : _objects)
 	{
 		if (known.channel != channel)
@@ -231,21 +249,49 @@ std::optional<std::uint64_t> SessionManager::LinkChannelByClip(std::uintptr_t ch
 			known.shownNumber = known.playlistNumber;
 			return std::nullopt;
 		}
+		owner = id;
 		break;
 	}
-	// The object of the channel does not have this clip: find the object that the game gave this clip to.
+	const auto link = [this](std::uint64_t objectId, std::uintptr_t to, LinkRule rule) {
+		BindChannel(objectId, to);
+		auto& linked = _objects[objectId];
+		linked.shownNumber = linked.playlistNumber;
+		return ChannelLink {.objectId = objectId, .rule = rule};
+	};
+	// Rule 2: an object that got this clip.
 	std::optional<std::uint64_t> best;
 	const KnownObject* bestKnown = nullptr;
 	for (const auto& [id, known] : _objects)
 	{
-		if (known.channel == channel || known.playlistNumber <= known.shownNumber || !hasClip(known))
+		if (known.channel == channel || !notShown(known) || !hasClip(known))
 		{
 			continue;
 		}
-		const bool better =
-		    bestKnown == nullptr || (known.channel == 0 && bestKnown->channel != 0) ||
-		    ((known.channel == 0) == (bestKnown->channel == 0) && known.playlistNumber > bestKnown->playlistNumber);
-		if (better)
+		const bool free = known.channel == 0;
+		const bool bestFree = bestKnown != nullptr && bestKnown->channel == 0;
+		if (bestKnown == nullptr || (free && !bestFree) ||
+		    (free == bestFree && known.playlistNumber > bestKnown->playlistNumber))
+		{
+			best = id;
+			bestKnown = &known;
+		}
+	}
+	if (best)
+	{
+		return link(*best, channel, LinkRule::Clip);
+	}
+	if (!changed)
+	{
+		return std::nullopt;
+	}
+	// Rule 3: the object that got a list just before the channel started this clip.
+	for (const auto& [id, known] : _objects)
+	{
+		if (!notShown(known) || known.playlist.empty() || now < known.playlistTime || now - known.playlistTime > k_LinkWindow)
+		{
+			continue;
+		}
+		if (bestKnown == nullptr || known.playlistNumber > bestKnown->playlistNumber)
 		{
 			best = id;
 			bestKnown = &known;
@@ -255,10 +301,12 @@ std::optional<std::uint64_t> SessionManager::LinkChannelByClip(std::uintptr_t ch
 	{
 		return std::nullopt;
 	}
-	BindChannel(*best, channel);
-	auto& linked = _objects[*best];
-	linked.shownNumber = linked.playlistNumber;
-	return best;
+	if (best == owner)
+	{
+		_objects[*best].shownNumber = bestKnown->playlistNumber;
+		return std::nullopt;
+	}
+	return link(*best, channel, LinkRule::Time);
 }
 
 Session* SessionManager::MatchChannel(std::uintptr_t channel, const std::optional<ScreenKey>& clipKey)

@@ -59,9 +59,11 @@ See "Which TV" in `docs/research/tv/native.md`. The order of the match in `Sessi
 1. The channel that a playlist linked to the object of a session. The runtime keeps the newest list of clip keys of
    each object that gets a playlist, also of an object with no session. When `RenderFrame` shows a channel with a clip
    that its object does not have, the channel goes to the object whose newest list has that clip and that no channel
-   showed yet (an object with no channel first, then the newest list; `SessionManager::LinkChannelByClip`). This is
-   the match that the watch design uses: the watch interaction of the game puts the TV on its channel, and the
-   channel sends a playlist.
+   showed yet (an object with no channel first, then the newest list; `SessionManager::LinkChannelByClip`). The
+   channel of a TV plays a VP6 clip that is not the key of its list. For it, a channel that starts a clip that is in
+   no list goes to the object whose newest list no channel showed yet and came in the last 1.5 s. This is the match
+   that the watch design uses: the watch interaction of the game puts the TV on its channel, and the channel sends a
+   playlist.
 2. Else the object whose screen key (from the script mod) is the clip key of the channel. The mod then links that
    channel. The script mod of the watch design does not send a screen key; the bridge keeps the function.
 3. Else the session of "any TV" (object id 0, only from the inspector): it takes the first channel that it sees.
@@ -142,8 +144,8 @@ while the TV plays. Options for the merger and the extender lane:
 The DLL mod writes these lines to the log of the extender:
 
 - `frames: playlist message N for the object X: K clip keys ...`: the first 40 playlist messages, with their keys.
-- `frames: the playlist of the object X links the channel C (clip K)`: a new link (each link of a TV with a session,
-  and the first 40 other links).
+- `frames: the playlist of the object X links the channel C (clip K, by R)`: a new link, by the same clip or by the
+  time (each link of a TV with a session, and the first 40 other links).
 - `frames: the first frame of the channel C`: the first RenderFrame of each channel (at most 64), with the clip key,
   the size of the target, the size of the Y plane, the flip flag and the two flags of the video settings of the game.
 - `frames: mode M, renderCalls ...`: every 5 s while a session runs: the calls, the channels, the calls for a video,
