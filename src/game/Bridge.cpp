@@ -6,6 +6,8 @@
 // main thread, until the native Python module of the extender exists. Each function checks each argument, catches
 // each exception, and sets the last error of the interface.
 
+#include "game/Bridge.h"
+
 #include <cstdint>
 
 #include <exception>

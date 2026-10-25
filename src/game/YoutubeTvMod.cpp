@@ -18,6 +18,7 @@
 #include <mod_game/Scan.h>
 
 #include "game/ProcessMemory.h"
+#include "game/PythonModule.h"
 
 namespace ts4_mod::youtube_tv
 {
@@ -78,15 +79,7 @@ ts4::Result<std::unique_ptr<YoutubeTvMod>> YoutubeTvMod::Start(std::unique_ptr<s
 	// and then the signatures do not match. Thus the mod reads the offsets now.
 	self.EnsureLayouts();
 	// A task runs on the main thread. The bridge accepts only calls on that thread.
-	if (!self._host->PostTask([] {
-		    if (auto* active = ActiveYoutubeTvMod(); active != nullptr)
-		    {
-			    active->_mainThread = std::this_thread::get_id();
-		    }
-	    }))
-	{
-		self._host->Warn("the extender refused the task that finds the main thread");
-	}
+	self.PostMainThreadTask();
 	self._host->Info("start on the game version {}", ToString(self._host->Version()));
 	return mod;
 }
@@ -102,8 +95,42 @@ YoutubeTvMod::YoutubeTvMod(std::unique_ptr<sdk::ModHost> host)
 
 YoutubeTvMod::~YoutubeTvMod()
 {
+	python_module::Unregister();
 	_runtime.reset();
 	_host->Info("stop");
+}
+
+void YoutubeTvMod::PostMainThreadTask()
+{
+	const bool posted = _host->PostTask([] {
+		if (auto* active = ActiveYoutubeTvMod(); active != nullptr)
+		{
+			active->OnMainThreadTask();
+		}
+	});
+	if (!posted)
+	{
+		_host->Warn("the extender refused the task on the main thread; the bridge and the Python module stay off");
+	}
+}
+
+void YoutubeTvMod::OnMainThreadTask()
+{
+	_mainThread = std::this_thread::get_id();
+	++_pythonTries;
+	auto registered = python_module::Register();
+	if (!registered)
+	{
+		_host->Error("the Python module {} stays off: {}", k_PythonModuleName, registered.GetError().message);
+		return;
+	}
+	if (!*registered)
+	{
+		// The interpreter is not ready. The task runs again at the next tick.
+		PostMainThreadTask();
+		return;
+	}
+	_host->Info("the Python module {} is in sys.modules (try {}, on the main thread)", k_PythonModuleName, _pythonTries);
 }
 
 void YoutubeTvMod::EnsureLayouts()

@@ -40,8 +40,11 @@ All in `TS4_x64.exe`. The signatures are in `src/core/VideoLayout.h`; the RVAs a
 | `VideoComponent::SetPlaylist` | before | 1: component | Links the channel of the component to the kept object id. |
 | `UpdateListenerFromCamera` | after | 1: listener state | Reads the copy of the camera matrix and moves the listener of the 3D audio. |
 
-The mod reads the offsets one time, in the first callback (the exe is then decrypted): it finds each signature
-with `FindUniqueSignature` of `mod_game` (read only) and reads the rules in a window of the function. A part with a
+The mod reads the offsets one time, in `Ts4ModInit`: the extender loads the DLL mods after the exe is decrypted, and
+it puts its hooks on the functions after the inits. A hook changes the first bytes of a function, so a signature
+does not match after the hook (the first game test, 2026-10-25, saw this). The mod finds each signature with
+`FindUniqueSignature` of `mod_game` (read only) and reads the rules in a window of the function. If the exe is not
+decrypted at the init, the first callback tries again. A part with a
 failed rule stays off, with one log line: the frames (renderer layout), the link of a TV (channel layout), the
 listener.
 
@@ -63,7 +66,8 @@ See "Which TV" in `docs/research/tv/native.md`. The order of the match in `Sessi
 | Thread of the audio | Owns XAudio2 in the multithreaded apartment of COM (no change to the COM state of a game thread). Every 5 ms it reads each audio ring into the queue of its voice (three buffers of 10 ms). It removes old audio when the ring has more than 200 ms. |
 | Threads of XAudio2 | The audio output of Windows. |
 
-The bridge refuses a call that is not on the thread of `Ts4ModInit` (the main thread).
+The bridge refuses a call that is not on the main thread. The extender can call `Ts4ModInit` on its start thread, so
+the mod takes the main thread from its first task (`postTask`). Until that task runs, the bridge refuses each call.
 
 **Plan B if `RenderFrame` is not on the main thread.** The extender runs a callback only on the main thread; on
 another thread only the original runs. Then the frames never change and `youtube_tv.status` shows `renderCalls` 0
@@ -114,6 +118,37 @@ super speed only; the levels are 0 paused, 1 normal, 2, 3, 4 super, 5 never), wh
 `playing` (buffering, ended, failed), and after `YoutubeTvStopAll` (the zone unloads). The values of `mute_speed` of
 the TV tunings are not known yet (`python.md`, open point 1). When they are known, the script mod can give them, or
 `muteLevel` can follow them.
+
+## The Python module `ts4_youtube_tv_native`
+
+The game Python has no `ctypes` package (the first game test, 2026-10-25: `ModuleNotFoundError: No module named
+'ctypes'`; `Game\Bin\Python\DLLs` has `_ctypes_x64.pyd`, but the game zips have no `ctypes` package). Thus the DLL
+adds its own Python module to the interpreter (`src/game/PythonModule.cpp`):
+
+- The task of the main thread runs at each tick until `python37_x64.dll` is loaded and `Py_IsInitialized()` is true.
+  Then, under the GIL, it makes the module with `PyModule_New`, adds the functions with `PyCFunction_NewEx`, and puts
+  the module into `sys.modules`. The log gives the number of tries.
+- It uses `PythonApi`, `GilGuard` and `PyRef` of common `mod_game`, and gets the other exports (`PyModule_New`,
+  `PyCFunction_NewEx`, `PyArg_ParseTuple`, `Py_BuildValue`, ...) itself with `GetProcAddress`.
+- The functions mirror the C interface and call the same code (`Bridge.h`):
+
+| Python | C |
+|---|---|
+| `api_version() -> int` | `YoutubeTvApiVersion` |
+| `play(object_id, url, (x, y, z), (x, y, z, w)) -> int` | `YoutubeTvPlay` |
+| `stop(object_id) -> int` | `YoutubeTvStop` |
+| `stop_all()` | `YoutubeTvStopAll` |
+| `set_speed(mode, scale, super_speed)` | `YoutubeTvSetSpeed` |
+| `set_transform(object_id, (x, y, z), (x, y, z, w))` | `YoutubeTvSetTransform` |
+| `set_screen_key(object_id, instance, type, group)` | `YoutubeTvSetScreenKey` |
+| `last_error() -> str` | `YoutubeTvLastError` |
+
+A wrong argument type gives a `TypeError`; an exception of C++ gives a `RuntimeError`. `Ts4ModShutdown` removes the
+module from `sys.modules`. When the extender gets its own native Python module (stage 4), this module can move there.
+
+`native.py` of the script mod imports `ts4_youtube_tv_native` first. If it is not there, it uses `ctypes` (if the
+game has it) with the C interface below. If neither works, the bridge is off with one log line, and the next call
+tries again.
 
 ## The C interface for the script mod (version 1)
 

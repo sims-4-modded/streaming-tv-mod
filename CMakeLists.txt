@@ -84,7 +84,7 @@ if (WIN32)
   target_link_libraries(ts4_youtube_tv_game PUBLIC ts4_youtube_tv_core ts4_mod_api ole32)
   ts4_set_warnings(ts4_youtube_tv_game)
 
-  add_library(youtube_tv SHARED src/game/Bridge.cpp src/game/YoutubeTvMod.cpp src/game/YoutubeTvMod.h src/game/ModMain.cpp)
+  add_library(youtube_tv SHARED src/game/Bridge.cpp src/game/Bridge.h src/game/PythonModule.cpp src/game/PythonModule.h src/game/YoutubeTvMod.cpp src/game/YoutubeTvMod.h src/game/ModMain.cpp)
   target_include_directories(youtube_tv PRIVATE src)
   target_link_libraries(youtube_tv PRIVATE ts4_youtube_tv_game ts4_mod_sdk ts4_mod_game)
   ts4_set_warnings(youtube_tv)

@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include <atomic>
 #include <memory>
 #include <string>
@@ -45,6 +47,10 @@ private:
 	explicit YoutubeTvMod(std::unique_ptr<sdk::ModHost> host);
 
 	void RegisterCallbacks();
+	/// Post the task that keeps the main thread and adds the Python module of the mod.
+	void PostMainThreadTask();
+	/// Keep the main thread, and add the Python module. If the interpreter is not ready, post the task again.
+	void OnMainThreadTask();
 	void RegisterQueries();
 	/// Read the offsets from the code of the game, one time. The mod calls it in `Ts4ModInit`, before the extender
 	/// puts its hooks on the functions. If the exe is not decrypted yet, the callbacks call it again.
@@ -53,6 +59,7 @@ private:
 	std::unique_ptr<sdk::ModHost> _host;
 	std::unique_ptr<TvRuntime> _runtime;
 	std::atomic<std::thread::id> _mainThread {};
+	std::uint64_t _pythonTries = 0;
 	bool _layoutsRead = false;
 	bool _layoutWaitLogged = false;
 	std::string _bridgeError;
