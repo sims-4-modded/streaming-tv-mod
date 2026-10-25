@@ -214,10 +214,12 @@ void YoutubeTvMod::EnsureLayouts()
 	{
 		_host->Warn("the diagnostic of the video settings stays off: {}", settings.GetError().message);
 	}
+	const auto messageCode =
+	    window("PlaylistMessage", layout::k_PlaylistMessageSignature.text, layout::k_PlaylistMessageWindow);
 	auto channel = layout::ReadChannelLayout(
-	    window("SetPlaylist", layout::k_SetPlaylistSignature.text, layout::k_SetPlaylistWindow),
-	    window("PlaylistMessage", layout::k_PlaylistMessageSignature.text, layout::k_PlaylistMessageWindow),
-	    window("ChannelUpdate", layout::k_ChannelUpdateSignature.text, layout::k_ChannelUpdateWindow));
+	    window("SetPlaylist", layout::k_SetPlaylistSignature.text, layout::k_SetPlaylistWindow), messageCode,
+	    reinterpret_cast<std::uintptr_t>(messageCode.data()),
+	    window("ChannelUpdate", layout::k_ChannelUpdateSignature.text, layout::k_ChannelUpdateWindow), codeAt);
 	if (channel)
 	{
 		_runtime->SetChannelLayout(*channel);

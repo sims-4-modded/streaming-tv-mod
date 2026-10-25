@@ -85,17 +85,35 @@ ts4::Result<RendererLayout> ReadRendererLayout(std::span<const std::byte> render
 }
 
 ts4::Result<ChannelLayout> ReadChannelLayout(std::span<const std::byte> setPlaylistCode, std::span<const std::byte> messageCode,
-                                             std::span<const std::byte> channelUpdateCode)
+                                             std::uintptr_t messageCodeAddress, std::span<const std::byte> channelUpdateCode,
+                                             const CodeAt& codeAt)
 {
 	ChannelLayout layout;
 	if (auto error = Read(setPlaylistCode, k_ComponentChannel, layout.componentChannel))
 	{
 		return *error;
 	}
-	if (auto error = Read(messageCode, k_MessageObjectId, layout.messageObjectId))
+	std::size_t objectKey = 0;
+	if (auto error = Read(messageCode, k_MessageObjectId, objectKey))
 	{
 		return *error;
 	}
+	auto lookup = ReadRelativeTarget(messageCode, messageCodeAddress, k_ObjectLookupCall);
+	if (!lookup)
+	{
+		return lookup.GetError();
+	}
+	const auto lookupCode = codeAt(*lookup, k_ObjectLookupWindow);
+	if (lookupCode.empty())
+	{
+		return ts4::MakeError("the function that finds the object of a playlist is not in the code of the game");
+	}
+	std::size_t idInKey = 0;
+	if (auto error = Read(lookupCode, k_ObjectIdInKey, idInKey))
+	{
+		return *error;
+	}
+	layout.messageObjectId = objectKey + idInKey;
 	if (auto error = Read(channelUpdateCode, k_ChannelClipKey, layout.channelClipKey))
 	{
 		return *error;

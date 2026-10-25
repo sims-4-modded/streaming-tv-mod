@@ -153,14 +153,29 @@ inline constexpr DisplacementRule k_ComponentChannel {.name = "component channel
                                                       .max = 0x78,
                                                       .alignment = k_PointerAlignment};
 
-/// The object id in the message of a list of clips.
-inline constexpr DisplacementRule k_MessageObjectId {.name = "message object id",
+/// The key of the object in the message of a list of clips. The function gives the address of the key to the
+/// function that finds the object.
+inline constexpr DisplacementRule k_MessageObjectId {.name = "message object key",
                                                      .pattern = "48 8B D9 48 83 C1 ?? 48 8D 55",
                                                      .at = 6,
                                                      .size = DisplacementSize::Byte,
                                                      .min = 0x8,
                                                      .max = 0x78,
                                                      .alignment = k_PointerAlignment};
+
+/// The call of the function that finds the object of the message.
+inline constexpr RelativeRule k_ObjectLookupCall {
+    .name = "object lookup call", .pattern = "48 8B D9 48 83 C1 ?? 48 8D 55 ?? E8 ?? ?? ?? ??", .at = 12, .end = 16};
+/// The bytes of code of the function that finds the object. The function is not longer.
+inline constexpr std::size_t k_ObjectLookupWindow = 0x69;
+/// The object id in the key of the object. The function that finds the object reads it, then calls the manager.
+inline constexpr DisplacementRule k_ObjectIdInKey {.name = "object id in the key",
+                                                   .pattern = "48 8B 57 ?? FF 50",
+                                                   .at = 3,
+                                                   .size = DisplacementSize::Byte,
+                                                   .min = 0,
+                                                   .max = 0x38,
+                                                   .alignment = k_PointerAlignment};
 
 /// The key of the clip that the channel plays now.
 inline constexpr DisplacementRule k_ChannelClipKey {.name = "channel clip key",
@@ -239,13 +254,17 @@ struct RendererLayout
 struct ChannelLayout
 {
 	std::size_t componentChannel = 0;
+	/// The object id in the message: the key of the object in the message, plus the id in the key.
 	std::size_t messageObjectId = 0;
 	std::size_t channelClipKey = 0;
 };
 
+/// Read the offsets from the code of three functions. The message code starts at `messageCodeAddress`. `codeAt`
+/// gives the code of the function that finds the object of the message.
 [[nodiscard]] ts4::Result<ChannelLayout> ReadChannelLayout(std::span<const std::byte> setPlaylistCode,
                                                            std::span<const std::byte> messageCode,
-                                                           std::span<const std::byte> channelUpdateCode);
+                                                           std::uintptr_t messageCodeAddress,
+                                                           std::span<const std::byte> channelUpdateCode, const CodeAt& codeAt);
 
 /// The offset of the camera matrix in the state of the listener.
 [[nodiscard]] ts4::Result<std::size_t> ReadListenerLayout(std::span<const std::byte> listenerCode);

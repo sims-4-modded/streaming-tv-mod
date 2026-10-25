@@ -156,14 +156,51 @@ TEST(VideoLayout, RefusesARendererLayoutWithAMissingRule)
 	EXPECT_FALSE(game_layout::ReadRendererLayout(code));
 }
 
+/// The message code with the call of the lookup at 0x3000 + 16. The call goes to 0x4000.
+std::vector<std::byte> MessageCode()
+{
+	auto code = Code({{0x48, 0x8B, 0xD9, 0x48, 0x83, 0xC1, 0x28, 0x48, 0x8D, 0x55, 0x77, 0xE8, 0x00, 0x00, 0x00, 0x00}});
+	const auto displacement = static_cast<std::uint32_t>(0x4000 - (0x3000 + 16 + 16));
+	for (std::size_t index = 0; index < 4; ++index)
+	{
+		code[16 + 12 + index] = static_cast<std::byte>((displacement >> (8 * index)) & 0xFF);
+	}
+	return code;
+}
+
+// The read of the object id and the call of the manager in the function that finds the object.
+const std::vector<std::byte> k_LookupCode = [] {
+	auto code = Code({{0x48, 0x8B, 0x00}, {0x48, 0x8B, 0x57, 0x08, 0xFF, 0x50, 0x18}});
+	code.resize(game_layout::k_ObjectLookupWindow, std::byte {0xCC});
+	return code;
+}();
+
+const game_layout::CodeAt k_LookupAt = [](std::uintptr_t address, std::size_t size) -> std::span<const std::byte> {
+	if (address == 0x4000 && size == k_LookupCode.size())
+	{
+		return k_LookupCode;
+	}
+	return {};
+};
+
 TEST(VideoLayout, ReadsTheChannelLayout)
 {
 	const auto layout =
-	    game_layout::ReadChannelLayout(Code({k_ComponentChannel}), Code({k_MessageObjectId}), Code({k_ChannelClipKey}));
+	    game_layout::ReadChannelLayout(Code({k_ComponentChannel}), MessageCode(), 0x3000, Code({k_ChannelClipKey}), k_LookupAt);
 	ASSERT_TRUE(layout) << layout.GetError().message;
 	EXPECT_EQ(layout->componentChannel, 0x20U);
-	EXPECT_EQ(layout->messageObjectId, 0x28U);
+	// The key of the object is at 0x28 in the message, and the id is 8 bytes into the key.
+	EXPECT_EQ(layout->messageObjectId, 0x30U);
 	EXPECT_EQ(layout->channelClipKey, 0xA0U);
+}
+
+TEST(VideoLayout, RefusesAChannelLayoutWithoutTheLookup)
+{
+	const game_layout::CodeAt none = [](std::uintptr_t, std::size_t) { return std::span<const std::byte> {}; };
+	EXPECT_FALSE(
+	    game_layout::ReadChannelLayout(Code({k_ComponentChannel}), MessageCode(), 0x3000, Code({k_ChannelClipKey}), none));
+	EXPECT_FALSE(game_layout::ReadChannelLayout(Code({k_ComponentChannel}), Code({k_MessageObjectId}), 0x3000,
+	                                            Code({k_ChannelClipKey}), k_LookupAt));
 }
 
 TEST(VideoLayout, ReadsTheListenerLayout)
