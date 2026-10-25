@@ -9,9 +9,11 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <future>
 #include <numbers>
 #include <vector>
 
+#include <objbase.h>
 #include <windows.h>
 #include <x3daudio.h>
 #include <xaudio2.h>
@@ -99,8 +101,21 @@ ts4::Result<std::unique_ptr<AudioEngine>> AudioEngine::Start(Settings settings)
 {
 	auto engine = std::unique_ptr<AudioEngine>(new AudioEngine());
 	engine->_settings = settings;
-	engine->_library = std::make_unique<Library>();
-	auto& library = *engine->_library;
+	std::promise<ts4::Result<void>> started;
+	auto result = started.get_future();
+	engine->_feeder = std::jthread([raw = engine.get(), &started](std::stop_token stop) { raw->Run(stop, started); });
+	auto value = result.get();
+	if (!value)
+	{
+		return value.GetError();
+	}
+	return engine;
+}
+
+ts4::Result<void> AudioEngine::MakeLibrary()
+{
+	_library = std::make_unique<Library>();
+	auto& library = *_library;
 	library.module.reset(::LoadLibraryExW(L"xaudio2_9.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32));
 	if (!library.module)
 	{
@@ -126,20 +141,46 @@ ts4::Result<std::unique_ptr<AudioEngine>> AudioEngine::Start(Settings settings)
 	library.master->GetChannelMask(&mask);
 	XAUDIO2_VOICE_DETAILS details {};
 	library.master->GetVoiceDetails(&details);
-	engine->_outputChannels = std::clamp<std::uint32_t>(details.InputChannels, 1, k_MaxOutputChannels);
+	_outputChannels = std::clamp<std::uint32_t>(details.InputChannels, 1, k_MaxOutputChannels);
 	if (const auto result = initialize(mask, X3DAUDIO_SPEED_OF_SOUND, library.x3d.data()); FAILED(result))
 	{
 		return ts4::MakeError("X3DAudioInitialize failed with 0x{:08X}", static_cast<std::uint32_t>(result));
 	}
-	engine->_feeder = std::jthread([raw = engine.get()](std::stop_token stop) { raw->Feed(stop); });
-	return engine;
+	return {};
+}
+
+void AudioEngine::Run(std::stop_token stop, std::promise<ts4::Result<void>>& started)
+{
+	// XAudio2 needs COM. The thread of the engine joins the multithreaded apartment, so that the engine never
+	// changes the COM state of a thread of the game. The apartment stays while this thread runs.
+	const auto com = ::CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+	if (FAILED(com))
+	{
+		started.set_value(ts4::MakeError("CoInitializeEx failed with 0x{:08X}", static_cast<std::uint32_t>(com)));
+		return;
+	}
+	auto made = MakeLibrary();
+	const bool ok = made.HasValue();
+	if (!ok)
+	{
+		_library.reset();
+	}
+	// After this call, `started` is not valid: the thread of `Start` continues.
+	started.set_value(std::move(made));
+	if (ok)
+	{
+		Feed(stop);
+		const std::lock_guard lock(_mutex);
+		_voices.clear();
+		_library.reset();
+	}
+	::CoUninitialize();
 }
 
 AudioEngine::~AudioEngine()
 {
+	// The thread of the engine removes the voices and the library before it leaves the apartment.
 	_feeder = {};
-	const std::lock_guard lock(_mutex);
-	_voices.clear();
 }
 
 ts4::Result<void> AudioEngine::AddVoice(std::int32_t id, std::shared_ptr<PcmSource> source)

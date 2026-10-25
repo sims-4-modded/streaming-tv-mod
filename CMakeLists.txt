@@ -81,7 +81,7 @@ if (WIN32)
   )
   target_include_directories(ts4_youtube_tv_game PUBLIC src)
   target_compile_definitions(ts4_youtube_tv_game PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX)
-  target_link_libraries(ts4_youtube_tv_game PUBLIC ts4_youtube_tv_core ts4_mod_api)
+  target_link_libraries(ts4_youtube_tv_game PUBLIC ts4_youtube_tv_core ts4_mod_api ole32)
   ts4_set_warnings(ts4_youtube_tv_game)
 
   add_library(youtube_tv SHARED src/game/Bridge.cpp src/game/YoutubeTvMod.cpp src/game/YoutubeTvMod.h src/game/ModMain.cpp)
@@ -94,6 +94,9 @@ if (WIN32)
 
   # The test client of the helper. It needs no CEF.
   add_subdirectory(tools/host_probe)
+
+  # The local probe of the runtime of the DLL: the helper, the frames in fake planes and the 3D audio.
+  add_subdirectory(tools/tv_probe)
 endif ()
 
 if (TS4_YOUTUBE_TV_BUILD_TESTS)

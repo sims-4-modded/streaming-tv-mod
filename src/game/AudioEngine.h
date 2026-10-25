@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include <future>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -37,7 +38,8 @@ public:
 
 /// The 3D audio of the videos, with XAudio2 and X3DAudio of Windows. The engine loads `xaudio2_9.dll` from the
 /// system folder; it brings no DLL into the game folder. One source voice plays each video. A thread of the engine
-/// feeds the voices from their sources. The main thread gives the listener and the emitters, and calls `Update`.
+/// owns the XAudio2 objects in the multithreaded apartment of COM, and feeds the voices from their sources. The main
+/// thread gives the listener and the emitters, and calls `Update`.
 class AudioEngine
 {
 public:
@@ -79,6 +81,8 @@ private:
 
 	AudioEngine() = default;
 
+	[[nodiscard]] ts4::Result<void> MakeLibrary();
+	void Run(std::stop_token stop, std::promise<ts4::Result<void>>& started);
 	void Feed(std::stop_token stop);
 
 	std::unique_ptr<Library> _library;
