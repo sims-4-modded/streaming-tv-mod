@@ -132,6 +132,9 @@ void HostApp::OnBeforeCommandLineProcessing(const CefString& processType, CefRef
 	// The media keys of the keyboard must not control the player of the game.
 	commandLine->AppendSwitchWithValue("disable-features", "HardwareMediaKeyHandling,MediaSessionService");
 	commandLine->AppendSwitch("disable-component-update");
+	// The parent plays the PCM of the audio handler in 3D. Chromium writes its own sound to a fake output device, so
+	// the sound does not play two times. The audio handler still gets the sound.
+	commandLine->AppendSwitch("disable-audio-output");
 }
 
 CefRefPtr<CefResourceHandler> PageSchemeFactory::Create(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, const CefString&,

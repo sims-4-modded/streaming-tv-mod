@@ -431,11 +431,8 @@ struct Helper
 		}
 	}
 	sessions = static_cast<int>(meters.size());
-	if (meters.empty())
-	{
-		return -1.0F;
-	}
-	float peak = 0.0F;
+	// Wait the full time also without a session, so that the caller can compare the ring in the same time.
+	float peak = meters.empty() ? -1.0F : 0.0F;
 	const auto end = std::chrono::steady_clock::now() + duration;
 	while (std::chrono::steady_clock::now() < end)
 	{
@@ -651,7 +648,7 @@ int Run(const Options& options)
 		const auto framesBefore = audio.Frames();
 		const float sessionPeak = AudioSessionPeak({ids.begin(), ids.end()}, 4s, sessions);
 		const auto [ringRms, ringPeak] = audio.Level(audio.Frames() - framesBefore);
-		const bool muted = ringPeak > 0.01 && sessionPeak < ringPeak * 0.01;
+		const bool muted = ringPeak > 0.01 && sessionPeak < ringPeak * 0.01F;
 		report.Check("CEF plays no sound itself", muted,
 		             std::format("{} helper processes, {} audio sessions, session peak {:.5f}, ring peak {:.4f} in the "
 		                         "same 4 s",
