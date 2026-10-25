@@ -14,9 +14,12 @@ The commands for a test in the game:
 
 - youtube_tv.watch_test: do the same as the OK of the dialog, with the URL test_url of the settings.
 - youtube_tv.watch_game: push only the watch interaction of the game on the nearest TV, without a video.
-- youtube_tv.camera [distance]: move the camera to the front of the nearest TV.
+- youtube_tv.camera [distance] [angle] [height]: move the camera near the nearest TV.
+- youtube_tv.camera_reset: give the camera back to the player.
 - youtube_tv.frames <video|off|bars>: tell the DLL mod what to write into the frames.
 """
+
+import math
 
 import sims4.commands
 
@@ -149,15 +152,29 @@ def run_watch_game(connection):
 
 
 DEFAULT_CAMERA_DISTANCE = 2.5
-CAMERA_HEIGHT = 0.3
+DEFAULT_CAMERA_HEIGHT = 1.5
+# The camera looks at this height above the origin of the TV, near the middle of the screen of a wall TV.
+CAMERA_TARGET_HEIGHT = 1.0
 
 
-def run_camera(distance_text, connection):
-    """Move the camera to the front of the nearest TV, at the distance in units of the game."""
+def _vector_text(vector):
+    if vector is None:
+        return "none"
+    return "({:.2f}, {:.2f}, {:.2f})".format(vector.x, vector.y, vector.z)
+
+
+def run_camera(distance_text, angle_text, height_text, connection):
+    """Move the camera near the nearest TV.
+
+    The camera is at the distance from the TV, in the direction of the front of the TV turned by the angle (degrees,
+    around the vertical axis), and at the height above the TV.
+    """
     try:
         distance = float(distance_text) if distance_text else DEFAULT_CAMERA_DISTANCE
+        angle = math.radians(float(angle_text)) if angle_text else 0.0
+        height = float(height_text) if height_text else DEFAULT_CAMERA_HEIGHT
     except ValueError:
-        _output("Usage: youtube_tv.camera [distance]", connection)
+        _output("Usage: youtube_tv.camera [distance] [angle] [height]", connection)
         return False
     target = tv.nearest_tv(_active_sim())
     if target is None:
@@ -167,11 +184,25 @@ def run_camera(distance_text, connection):
     import sims4.math
     position = target.position
     forward = target.forward
-    eye = sims4.math.Vector3(position.x + forward.x * distance, position.y + CAMERA_HEIGHT + forward.y * distance,
-                             position.z + forward.z * distance)
-    camera.walls_up_override(walls_up=True)
-    camera.focus_on_object_from_position(obj_position=position, camera_position=eye)
-    _output("The camera looks at the TV {} from {:.1f} units.".format(target.id, distance), connection)
+    direction_x = forward.x * math.cos(angle) - forward.z * math.sin(angle)
+    direction_z = forward.x * math.sin(angle) + forward.z * math.cos(angle)
+    eye = sims4.math.Vector3(position.x + direction_x * distance, position.y + height,
+                             position.z + direction_z * distance)
+    look = sims4.math.Vector3(position.x, position.y + CAMERA_TARGET_HEIGHT, position.z)
+    _output("Camera before: at {}, looks at {}.".format(
+        _vector_text(getattr(camera, "_camera_position", None)), _vector_text(getattr(camera, "_target_position", None))),
+        connection)
+    camera.focus_on_object_from_position(obj_position=look, camera_position=eye)
+    _output("The camera goes to {} and looks at {}; the TV {} is at {} with the front {}.".format(
+        _vector_text(eye), _vector_text(look), target.id, _vector_text(position), _vector_text(forward)), connection)
+    return True
+
+
+def run_camera_reset(connection):
+    """Give the camera back to the player."""
+    import camera
+    camera.set_to_default()
+    _output("The camera is free.", connection)
     return True
 
 
@@ -228,8 +259,13 @@ def youtube_tv_watch_game(_connection=None):
 
 
 @sims4.commands.Command("youtube_tv.camera", command_type=sims4.commands.CommandType.Live)
-def youtube_tv_camera(distance=None, _connection=None):
-    return _safe(run_camera, _connection, distance)
+def youtube_tv_camera(distance=None, angle=None, height=None, _connection=None):
+    return _safe(run_camera, _connection, distance, angle, height)
+
+
+@sims4.commands.Command("youtube_tv.camera_reset", command_type=sims4.commands.CommandType.Live)
+def youtube_tv_camera_reset(_connection=None):
+    return _safe(run_camera_reset, _connection)
 
 
 @sims4.commands.Command("youtube_tv.frames", command_type=sims4.commands.CommandType.Live)

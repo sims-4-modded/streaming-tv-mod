@@ -99,11 +99,17 @@ class CommandTest(unittest.TestCase):
     def test_camera_looks_at_the_tv_from_the_front(self):
         camera.calls.clear()
         self.assertTrue(command("youtube_tv.camera")("2", _connection=1))
-        self.assertEqual(camera.calls[0], ("walls_up", True))
-        _, position, eye = camera.calls[1]
-        self.assertIs(position, self.near.position)
-        self.assertEqual((eye.x, eye.z), (1.0, 3.0))
+        _, look, eye = camera.calls[0]
+        self.assertEqual((look.x, look.y, look.z), (1.0, 1.0, 1.0))
+        self.assertEqual((eye.x, eye.y, eye.z), (1.0, 1.5, 3.0))
+        # The angle turns the direction around the vertical axis.
+        self.assertTrue(command("youtube_tv.camera")("2", "90", "0", _connection=1))
+        _, _, eye = camera.calls[1]
+        self.assertAlmostEqual(eye.x, -1.0)
+        self.assertAlmostEqual(eye.z, 1.0)
         self.assertFalse(command("youtube_tv.camera")("near", _connection=1))
+        self.assertTrue(command("youtube_tv.camera_reset")(_connection=1))
+        self.assertEqual(camera.calls[-1], ("default",))
 
     def test_frames_sets_the_mode_of_the_dll(self):
         self.assertTrue(command("youtube_tv.frames")("bars", _connection=1))

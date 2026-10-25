@@ -209,7 +209,8 @@ folder.
 | `youtube_tv.info` | Shows the Video component of the nearest TV: `video_display_type`, `mute_speed`, `distortion_speed`, `speed_audio_clip_replacement` and the playlist with its clip keys. This answers open point 1 of the research. |
 | `youtube_tv.watch_test` | Does the same as the OK of the dialog, with `test_url`. For a test in the game without the dialog. |
 | `youtube_tv.watch_game` | Pushes only the watch interaction of the game on the nearest TV, with no video of the mod. |
-| `youtube_tv.camera [distance]` | Moves the camera to the front of the nearest TV (default 2.5 units) and puts the walls up. |
+| `youtube_tv.camera [distance] [angle] [height]` | Moves the camera near the nearest TV: the front of the TV turned by the angle (degrees), at the distance and the height (defaults 2.5, 0, 1.5). It writes the old camera and the TV transform to the console. |
+| `youtube_tv.camera_reset` | Gives the camera back to the player. |
 | `youtube_tv.frames <video\|off\|bars>` | Tells the DLL mod what to write into the frames (`set_frame_mode` of its Python module). |
 
 ## Build, test and install
