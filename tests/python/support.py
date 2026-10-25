@@ -12,6 +12,9 @@ import os
 import sys
 import tempfile
 
+# The tests do not write bytecode into the source folders.
+sys.dont_write_bytecode = True
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 FAKES = os.path.join(HERE, "fakes")
