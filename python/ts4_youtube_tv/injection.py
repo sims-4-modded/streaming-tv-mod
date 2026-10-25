@@ -5,7 +5,7 @@
 """Add the interaction to the pie menu of each object with a Video component.
 
 When the OBJECT instance manager completes its load, the mod adds the tuned interaction (from the package of the mod)
-to _super_affordances of each object tuning class with a Video component. The test of the interaction then shows it
+to _super_affordances of each object tuning class with a Video component (in _components_native). The test of the interaction then shows it
 only on TVs (the tag Func_TV), not on computers, tablets or consoles. A second run adds nothing.
 """
 
@@ -15,11 +15,16 @@ _installed = False
 
 
 def has_video_component(tuning_class):
-    """Return True if the object tuning class has a tuned Video component."""
-    components = getattr(tuning_class, "_components", None)
-    if components is None:
-        return False
-    return getattr(components, "Video", None) is not None
+    """Return True if the object tuning class has a tuned Video component.
+
+    The game tunes the Video component in _components_native (a native component), not in _components. The function
+    also reads _components, in case a pack tunes it there.
+    """
+    for name in ("_components_native", "_components"):
+        components = getattr(tuning_class, name, None)
+        if components is not None and getattr(components, "Video", None) is not None:
+            return True
+    return False
 
 
 def find_affordance(instance_id):

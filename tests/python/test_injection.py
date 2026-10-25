@@ -20,7 +20,9 @@ class Components:
 
 
 def make_class(name, video, affordances=()):
-    return type(name, (), {"_components": Components(video), "_super_affordances": tuple(affordances)})
+    # The game tunes the Video component in _components_native, and _components has no Video field.
+    return type(name, (), {"_components": Components(False), "_components_native": Components(video),
+                           "_super_affordances": tuple(affordances)})
 
 
 class FakeInstanceManager:
@@ -49,8 +51,9 @@ class InjectionTest(unittest.TestCase):
         self.computer = make_class("object_computer", True)
         self.chair = make_class("object_chair", False)
         self.no_components = type("object_plain", (), {"_super_affordances": ()})
+        self.old_layout = type("object_old", (), {"_components": Components(True), "_super_affordances": ()})
         self.objects = FakeInstanceManager(types={1: self.tv, 2: self.computer, 3: self.chair,
-                                                  4: self.no_components})
+                                                  4: self.no_components, 5: self.old_layout})
         self.affordance = interaction.WatchYoutubeVideoInteraction
         self.interactions = FakeInstanceManager(instances={interaction.INSTANCE_ID: self.affordance})
         services.instance_managers[sims4.resources.Types.OBJECT] = self.objects
@@ -63,6 +66,7 @@ class InjectionTest(unittest.TestCase):
         self.assertEqual(self.computer._super_affordances, (self.affordance,))
         self.assertEqual(self.chair._super_affordances, ())
         self.assertEqual(self.no_components._super_affordances, ())
+        self.assertEqual(self.old_layout._super_affordances, (self.affordance,))
 
     def test_is_idempotent(self):
         injection.install()

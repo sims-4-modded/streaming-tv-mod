@@ -83,7 +83,8 @@ the TV, the channels and the cheat command `video.set_clips` use the component, 
 
 When the OBJECT instance manager completes its load, `injection.py` finds the tuning of the interaction in the
 INTERACTION instance manager. It adds the interaction to `_super_affordances` of each object tuning class that has a
-tuned Video component (`cls._components.Video`). Computers, tablets and consoles also have a Video component; the test
+tuned Video component (`cls._components_native.Video`; the game tunes it as a native component, the first game test
+found 0 classes with `cls._components.Video`). Computers, tablets and consoles also have a Video component; the test
 of the interaction hides it on these objects, because they do not have the tag `Func_TV`. The injection adds the
 interaction only one time to each class.
 
