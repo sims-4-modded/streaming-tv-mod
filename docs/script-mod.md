@@ -12,14 +12,15 @@ The script mod has two files:
 | `ts4_youtube_tv.package` | A DBPF 2.1 package with the tuning of the interaction and a string table for each language. |
 
 The sources are in `python/ts4_youtube_tv` and `tuning`. The research of the game Python is in
-`research/tv/python.md`. The C interface of the DLL mod is in `D:\sims_4\progress\youtube_tv_bridge.md` (version 1).
+`research/tv/python.md`. The C interface of the DLL mod is in `D:\sims_4\progress\youtube_tv_bridge.md` (version 1) and in `design.md`
+(version 2 adds `YoutubeTvSetPlaylistClips`).
 
 ## The parts
 
 | Module | What it does |
 |---|---|
 | `__init__.py` | The game imports it. It reads the settings, installs the wraps, registers the injection and the cheat commands. An error in one part writes a log line, and the other parts continue. |
-| `native.py` | The bridge to `youtube_tv.dll`. The game Python has no `ctypes`, so it first imports the Python module `ts4_youtube_tv_native` that the DLL adds to `sys.modules` (`design.md`). If that module is not there, it uses `ctypes` (if the game has it): it gets the handle of the DLL that the extender loaded (`GetModuleHandleW`), does not load a second copy, and gives each function its types. It checks the API version 1. If the bridge cannot start, it is off with one log line, and the next call tries again. Only this module knows the interface. |
+| `native.py` | The bridge to `youtube_tv.dll`. The game Python has no `ctypes`, so it first imports the Python module `ts4_youtube_tv_native` that the DLL adds to `sys.modules` (`design.md`). If that module is not there, it uses `ctypes` (if the game has it): it gets the handle of the DLL that the extender loaded (`GetModuleHandleW`), does not load a second copy, and gives each function its types. It accepts the API versions 1 and 2. With version 1, only `set_playlist_clips` is off. If the bridge cannot start, it is off with one log line, and the next call tries again. Only this module knows the interface. |
 | `urls.py` | The check of the URL of a YouTube video. It has the same rules as `src/core/YoutubeUrl.cpp`, and its tests use the same examples. |
 | `fnv.py` | The FNV-1 64 and FNV-1 32 hashes. The game makes the instance of a clip key from the FNV-1 64 of the clip name in lower case. |
 | `tv.py` | The test for a TV (the tag `Func_TV` or `Func_Television`, and a Video component), the broken test (`state_component.is_object_usable()`), the transform, the nearest TV and the key of a clip. |
@@ -30,6 +31,7 @@ The sources are in `python/ts4_youtube_tv` and `tuning`. The research of the gam
 | `dialogs.py` | The URL dialog (`UiDialogTextInputOkCancel` from its factory default) and the error notification (`UiDialogNotification`). All texts are raw text. |
 | `injection.py` | Adds the interaction to each object tuning class with a Video component, when the OBJECT instance manager completes its load. |
 | `clock.py` | Sends the speed of the game to the DLL mod. |
+| `playlists.py` | At the zone start, reads the clip keys of each playlist resource of the game and sends them to the DLL mod (see "The playlist resources"). |
 | `session.py` | One session for each TV that shows a video, as long as the watch interaction of the Sim runs. It starts and stops the sessions. |
 | `commands.py` | The cheat commands. |
 | `settings.py` | The settings file. |
@@ -68,6 +70,8 @@ Each wrap keeps the original function and calls it. A second install does not wr
 | `objects.components.video.VideoComponent.set_video_clips` | Calls the original first. While the watch interaction of the session runs, a playlist does not stop the session (the channel of the watch sets it). If the TV has a session and its watch interaction does not run, the session stops. |
 | `objects.components.video.VideoComponent.add_video_clips` | The same as `set_video_clips`. |
 | `objects.components.video.VideoComponent.on_remove` | Stops the session of the TV, then calls the original. This occurs when the player sells or removes the TV. |
+| `zone.Zone.start_services` | Calls the original first. Then it sends the clips of each playlist resource (`set_playlist_clips`). The zone loads its objects after this function, so the DLL mod has the clips before a TV gets a list. |
+| `sims4.resources.list(type=Types.PLAYLIST)`, `sims4.resources.load(key)` | Give the keys of the playlist resources and the bytes of each one (`playlists.py`). |
 | `zone.Zone.on_teardown` | Stops all sessions (`YoutubeTvStopAll`), then calls the original. This is the zone unload: `Zone.on_teardown` calls `on_zone_unload` of each service, and the objects of the zone still exist at that time. |
 | The OBJECT instance manager: `add_on_load_complete` | Registers the injection. |
 | `GameObject.register_on_location_changed` | The mod registers a callback for each TV with a session. When the TV moves, the callback sends the new transform (`YoutubeTvSetTransform`). |
@@ -199,13 +203,37 @@ the default, with one log line.
 The log of the script mod is `%LOCALAPPDATA%\Sims4Mods\logs\youtube_tv_script.log`. The mod never writes into the game
 folder.
 
+## The playlist resources
+
+The game gives the TV of a channel a list with the key of a playlist resource (type `0x545AC67A`, group
+`0x00BF458B`). The channel of the client does not play that key. It plays the VP6 clips of the resource in a random
+order (`research/tv/offsets.md`, the last section). The DLL mod sees only the clip of the channel, so it must know
+the clips of each playlist resource.
+
+`playlists.py` does this at each zone start (the wrap of `Zone.start_services`):
+
+1. `sims4.resources.list(type=Types.PLAYLIST)` gives the keys. The mod sends at most 256 playlists.
+2. `sims4.resources.load(key)` gives the SimData of each one. The parser reads only what the client reads: the first
+   table header, its row (a relative offset), and the vector `Keys` at the start of the row (a relative offset and a
+   count). Each key has 16 bytes: a u64 instance, a u32 type and a u32 group. Each relative offset counts from its
+   own field. A null offset, an offset out of the resource, or more than 1024 keys is an error.
+3. `native.set_playlist_clips((instance, type, group), keys)` sends the keys as 16-byte rows. A playlist with no
+   keys is not sent.
+
+A bad playlist does not stop the others. The send writes one log line, for example `playlists: sent 24 of 24
+playlists with 83 clips; 0 failed; 0 over the limit`, and `youtube_tv.status` shows it. If the list fails, the DLL
+is old (API version 1), or the bridge is off, the line tells why and the mod sends nothing. The DLL mod then links a
+TV by its time rule, as before.
+
+The tests make their own SimData bytes (`tests/python/test_playlists.py`) and use no data of the game.
+
 ## The cheat commands
 
 | Command | What |
 |---|---|
 | `youtube_tv.play <url>` | The active Sim watches the video on the TV that is nearest to it. If the lot has no TV that works, the command tells you. The cheat console makes the text lower case (first game test), and YouTube video ids have upper case letters, so use the dialog for real videos. |
 | `youtube_tv.stop` | Stops every video of the mod and cancels the watch interactions. |
-| `youtube_tv.status` | Shows the bridge (ready or off, and why), the settings, the sessions, the last speed that the mod sent, and the status of the DLL mod (`renderCalls`, `framesWritten`, the audio). |
+| `youtube_tv.status` | Shows the bridge (ready or off, and why), the settings, the sessions, the last speed that the mod sent, the result of the last send of the playlists, and the status of the DLL mod (`renderCalls`, `framesWritten`, the audio). |
 | `youtube_tv.info` | Shows the Video component of the nearest TV: `video_display_type`, `mute_speed`, `distortion_speed`, `speed_audio_clip_replacement` and the playlist with its clip keys. This answers open point 1 of the research. |
 | `youtube_tv.watch_test` | Does the same as the OK of the dialog, with `test_url`. For a test in the game without the dialog. |
 | `youtube_tv.watch_game` | Pushes only the watch interaction of the game on the nearest TV, with no video of the mod. |
@@ -262,6 +290,9 @@ Do the pie menu and the dialog by hand (not with synthetic input).
 6. A second "Watch a YouTube video" on the same TV replaces the video; a second dialog takes input.
 7. The speeds with a video: pause, speed 2 and 3, super speed, and the distortion of the game at speed 2.
 8. The zone unload with a session, and no exception log.
+9. The playlists: the log has `playlists: sent N of N playlists` with N approximately 24 and 0 failed, and
+   `youtube_tv.status` shows `playlistResources` N in the status of the DLL. The link line of the TV of the
+   session says "by the playlist resource", not "by the time".
 
 ## Open points
 

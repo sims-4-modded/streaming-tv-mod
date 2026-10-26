@@ -25,7 +25,7 @@ Status (2026-10-25): built, unit-tested, tested outside the game with the probe,
 | Process memory | `src/game/ProcessMemory.h` | `MemoryAccess` with a check of each page (`VirtualQuery`) before a read or a write. |
 | Runtime | `src/game/TvRuntime.h` | Joins the parts. It has no link to the extender, so the probe drives the same code. |
 | Extender glue | `src/game/YoutubeTvMod.h`, `ModMain.cpp` | The settings, the function callbacks, the queries and the status. |
-| Bridge | `src/game/Bridge.cpp` | The C interface for the script mod (version 1). |
+| Bridge | `src/game/Bridge.cpp` | The C interface for the script mod (version 2). |
 | Probe | `tools/tv_probe` | The local test outside the game (see below). |
 
 ## The hooks (function callbacks of the extender)
@@ -59,9 +59,13 @@ See "Which TV" in `docs/research/tv/native.md`. The order of the match in `Sessi
 1. The channel that a playlist linked to the object of a session. The runtime keeps the newest list of clip keys of
    each object that gets a playlist, also of an object with no session. When `RenderFrame` shows a channel with a clip
    that its object does not have, the channel goes to the object whose newest list has that clip and that no channel
-   showed yet (an object with no channel first, then the newest list; `SessionManager::LinkChannelByClip`). The
-   channel of a TV plays a VP6 clip that is not the key of its list. For it, a channel that starts a clip that is in
-   no list goes to the object whose newest list no channel showed yet and came in the last 1.5 s. This is the match
+   showed yet (an object with no channel first, then the newest list; `SessionManager::LinkChannelByClip`). The list
+   of a TV has the key of a playlist resource (type `0x545AC67A`), and its channel plays a VP6 clip of that resource.
+   Thus "has the clip" also means "has a playlist key whose resource has the clip". The script mod sends the clips
+   of each playlist resource at the zone start (`set_playlist_clips`, `SessionManager::SetPlaylistClips`), and the
+   log line of the link says "by the playlist resource". The time rule stays as the fallback, for a clip that is in
+   no list and in no known resource: such a channel goes to the object whose newest list no channel showed yet and
+   came in the last 1.5 s. This is the match
    that the watch design uses: the watch interaction of the game puts the TV on its channel, and the channel sends a
    playlist.
 2. Else the object whose screen key (from the script mod) is the clip key of the channel. The mod then links that
@@ -199,6 +203,7 @@ adds its own Python module to the interpreter (`src/game/PythonModule.cpp`):
 | `set_speed(mode, scale, super_speed)` | `YoutubeTvSetSpeed` |
 | `set_transform(object_id, (x, y, z), (x, y, z, w))` | `YoutubeTvSetTransform` |
 | `set_screen_key(object_id, instance, type, group)` | `YoutubeTvSetScreenKey` |
+| `set_playlist_clips((instance, type, group), clip_keys: bytes) -> int` | `YoutubeTvSetPlaylistClips` (version 2). `clip_keys` has 16-byte rows (u64 instance, u32 type, u32 group, little-endian). |
 | `last_error() -> str` | `YoutubeTvLastError` |
 | `status() -> str` | `TvRuntime::Status` as JSON text (the same as the query `youtube_tv.status`); the cheat command `youtube_tv.status` shows it. |
 
@@ -209,21 +214,23 @@ module from `sys.modules`. When the extender gets its own native Python module (
 game has it) with the C interface below. If neither works, the bridge is off with one log line, and the next call
 tries again.
 
-## The C interface for the script mod (version 1)
+## The C interface for the script mod (version 2)
 
 As `D:\sims_4\progress\youtube_tv_bridge.md` gives it: `extern "C"`, `__cdecl`, UTF-8, no exception goes out, each
 pointer and value checked (`src/core/BridgeArgs.h`), the last error set by each call (empty after a call that
-succeeds).
+succeeds). Version 2 added `YoutubeTvSetPlaylistClips`; the other functions did not change. The script mod accepts
+a DLL of version 1 and then sends no playlists.
 
 | Export | Notes of this implementation |
 |---|---|
-| `YoutubeTvApiVersion` | 1. |
+| `YoutubeTvApiVersion` | 2. |
 | `YoutubeTvPlay(objectId, url, position3, orientation4)` | Both pointers null: no transform. One pointer null: an error. A URL of 1 to 2048 bytes with no control character. A new video on the same TV replaces the old one. The limit is `maxSessions`. |
 | `YoutubeTvStop(objectId)` | 1 if a video stopped, else 0 with "the TV has no video". |
 | `YoutubeTvStopAll` | Stops each video and its voice. |
 | `YoutubeTvSetSpeed(mode, scale, superSpeed)` | Mode 0 to 5, scale finite and 0 or more, flag 0 or 1. The script mod sends `SUPER_SPEED3` as 5 with the flag 1. |
 | `YoutubeTvSetTransform(objectId, position3, orientation4)` | Both pointers necessary; the quaternion is made a unit quaternion. |
 | `YoutubeTvSetScreenKey(objectId, instance, type, group)` | Type not 0. The key is kept also before `YoutubeTvPlay`. |
+| `YoutubeTvSetPlaylistClips(instance, type, group, clipKeys, size)` | Keeps the clips of one playlist resource; 1, or 0 and the last error. The type must be `0x545AC67A`. `size` bytes of 16-byte rows: a multiple of 16, at most 1024 keys, a null pointer only with the size 0. No clip key can have the type 0 or the playlist type. An empty list removes the resource. At most 256 resources; a known resource can change when the limit is full. After an error, the old clips stay. The lock of `TvRuntime` guards the map, as for the other calls. |
 | `YoutubeTvLastError(buffer, size)` | Copies the error with a terminating zero, cut at a full UTF-8 character, and returns the length of the full error (like `snprintf`). A null buffer or the size 0 gives only the length. Before `Ts4ModInit` (or after `Ts4ModShutdown`) each call returns 0 and the error is "the DLL is not ready". |
 
 ## The inspector queries

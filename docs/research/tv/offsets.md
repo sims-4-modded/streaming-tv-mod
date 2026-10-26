@@ -203,3 +203,9 @@ most cases.
 The DLL mod cannot read the resource easily. The script mod can: `sims4.resources.list(type=Types.PLAYLIST)` gives
 every playlist key of the game and of the installed packs, and `sims4.resources.load(key)` gives the bytes of the
 SimData. The script mod reads `Keys` from each one and gives the lists to the DLL mod before the zone loads.
+
+**Done in lane `mods/playlist-link` (2026-10-26):** `python/ts4_youtube_tv/playlists.py` sends the clips at the wrap
+of `Zone.start_services` through `set_playlist_clips` (bridge version 2), and `SessionManager::LinkChannelByClip`
+uses them in rules 1 and 2. The open point that stays is a game test: the parser reads the first table header and
+its row, as the client does. The log line `playlists: sent N of N playlists ... 0 failed` and a link "by the
+playlist resource" on the TV of the session prove that the layout is correct for every resource.
