@@ -132,8 +132,74 @@ the channel of a TV does not play the key of its list. The playlist of our TV ha
 (`ea6fc4038e0f1ec3:376840d7:00000000`) that no message had. The code of the channel does not explain the change:
 `SetPlaylist` gives each key to the channel (slot +0x58, `0x017C36D0`, a deque of 24-byte entries at channel
 +0xB8..+0x108), and the open of a clip (`0x017C43C0`) copies the entry that it opens into channel +0xA0. The other
-video objects (lists with a `0x376840D7` key) linked by the same clip. Open point: where the client changes a
-`0x545AC67A` key into a VP6 clip (a different path than `SetPlaylist`, or a resource that lists clips).
+video objects (lists with a `0x376840D7` key) linked by the same clip. The open point (where the client changes a
+`0x545AC67A` key into a VP6 clip) has its answer in the last section: the key is a playlist resource, and the
+channel plays a random clip from the list of that resource.
 
 The other two callbacks of the mod (`RenderFrame`, `UpdateListenerFromCamera`) and the two hooks of the extender are
 safe with the hook manager as it is now.
+
+## How a channel changes a playlist key into a VP6 clip (2026-10-26, lane `research/playlist-clip`)
+
+Tree: `TS4_x64_1.128.90.1030`. The catalogue entries have the disassembly and the detail.
+
+### The key of type `0x545AC67A` is a playlist resource
+
+The game Python names the type: `sims4.resources.Types.PLAYLIST = 0x545AC67A`. `objects/components/video.py` sets
+the group `RESOURCE_GROUP_PLAYLIST = 0x00BF458B` for a key of this type, or for a clip name with the extension
+`.playlist`. Thus `efe29ab011f5411a:545ac67a:00bf458b` of the fifth test is a playlist resource, not a clip.
+
+The resource is SimData (magic `DATA`, schema `Video.Playlist`, one field `Keys`). Its object row starts with the
+vector `Keys`: an i32 relative offset and a u32 count, then 16-byte `ResourceKey` rows (u64 instance, u32 type,
+u32 group). The resource `efe29ab011f5411a` is `VideoPlaylist_TV_Action`, with 4 VP6 keys:
+
+| Instance | Type | Group |
+|---|---|---|
+| `ea6fc4038e0f1ec3` | `376840d7` | `00000000` |
+| `f8c9e12db961c34a` | `376840d7` | `00000000` |
+| `af0f3d9c9f8c858a` | `376840d7` | `00000000` |
+| `d8f79c9327a7c43c` | `376840d7` | `00000000` |
+
+The first key is the clip that the new channel showed 16 ms after the playlist message in the fifth test. The
+proof is complete: the clip came from the playlist resource of the key.
+
+A scan of every package of the game (read only, 2026-10-26) found 24 playlist resources (group `0x00BF458B`) with
+76 different VP6 keys. 7 keys are in two playlists: each of them is in `VideoPlaylist_TV_ChannelSurf` and in one
+other channel (`Action`, `Comedy`, `Cooking`, `Drama`, `Kids`, `News`, `Sports`). The packages in `Data` have 11
+playlists; the pack folders (`EP01`, `EP02`, `EP03`, `EP16`, `GP10`, `SP09`, `SP11` and `Delta`) have the others.
+
+### The path in the client
+
+1. `VideoComponent::SetPlaylist` (`0x017C3210`) gives each key of the message to the channel (slot +0x58,
+   `0x017C36D0`). The channel keeps the key as it is in its deque of 24-byte entries (key, loop flag, two flags).
+   Nothing reads the type here.
+2. When the channel must start a clip, `VideoChannel_StartNextClip` (`0x017C4210`, called from
+   `VideoChannel::Update` `0x017C4C30`) takes the front entry of the deque. If the type of the key is
+   `0x545AC67A`, it makes a playlist object (0x38 bytes, `0x017C6860`), loads the resource into it (`0x017C6AB0`)
+   and keeps it at channel +0x110. While the channel has a playlist object, each next clip comes from it
+   (`0x017C6960`). Any other key opens as it is.
+3. `VideoPlaylist_Load` (`0x017C6AB0`) gets a resource handle for the playlist key (tag `Video.Playlist`). It can
+   also add a key for each pack, but only if the second flag of the entry is set. `SetPlaylist` always gives 0 for
+   this flag, so only the key of the message loads.
+4. `VideoPlaylist_Shuffle` (`0x017C6DA0`) makes one order entry for each key of `Keys` and mixes the order with a
+   Fisher-Yates shuffle. The random generator is an LCG (`0x013D3DF0`) with a seed from RDTSC (`0x013D3E60`). Thus
+   the first clip and the order are random for each channel. Nothing in a message tells which clip comes first.
+5. `VideoPlaylist_NextClip` (`0x017C6960`) gives the key of the next order entry. It skips a key that the resource
+   manager does not have, or whose pack is not available. At the end of the order, it shuffles again. Thus a
+   playlist plays its clips in a loop that does not stop, in a new random order each time.
+6. `VideoChannel_OpenClip` (`0x017C43C0`) opens the clip (`streamable:<name>`) and copies its entry to channel
+   +0xA0. That is the key that the before-callback on `RenderFrame` reads.
+
+### The rule for the mod
+
+A channel plays clip C for an object if the newest list of the object has C, or has a playlist key P whose `Keys`
+has C. With this rule, rule 2 of `SessionManager::LinkChannelByClip` links a TV of the game by its clip, and
+rule 1 keeps the link when the playlist goes to its next clip. Rule 3 (the time) becomes a fallback only.
+
+A clip that is in two playlists (the 7 keys of `ChannelSurf`) can match two objects. Rule 2 then takes the object
+with no channel first, and then the newest list, as it does now. The next clip of the playlist removes the doubt in
+most cases.
+
+The DLL mod cannot read the resource easily. The script mod can: `sims4.resources.list(type=Types.PLAYLIST)` gives
+every playlist key of the game and of the installed packs, and `sims4.resources.load(key)` gives the bytes of the
+SimData. The script mod reads `Keys` from each one and gives the lists to the DLL mod before the zone loads.
