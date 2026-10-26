@@ -8,8 +8,8 @@
 Usage: python tools/build_script_mod.py [--out <folder>] [--python <python 3.7>]
        python tools/build_script_mod.py --self-test
 
-The tool compiles each source file of python/ts4_youtube_tv with Python 3.7 (C:\\lib\\python37\\python.exe), because
-the game runs Python 3.7 and loads only its bytecode. The .ts4script file is a zip of the .pyc files, with the folder
+The tool compiles each source file of python/ts4_youtube_tv with Python 3.7, because the game runs
+Python 3.7 and loads only its bytecode. The .ts4script file is a zip of the .pyc files, with the folder
 ts4_youtube_tv at the root of the zip.
 
 The .package file is a DBPF 2.1 package with uncompressed resources: each tuning XML of the folder tuning, and one
@@ -22,6 +22,7 @@ import argparse
 import importlib.util
 import io
 import json
+import os
 import pathlib
 import struct
 import subprocess
@@ -35,7 +36,6 @@ SOURCE = ROOT / "python"
 PACKAGE_NAME = "ts4_youtube_tv"
 TUNING = ROOT / "tuning"
 DEFAULT_OUT = ROOT / "build" / "script_mod"
-DEFAULT_PYTHON = pathlib.Path(r"C:\lib\python37\python.exe")
 
 SCRIPT_FILE = PACKAGE_NAME + ".ts4script"
 PACKAGE_FILE = PACKAGE_NAME + ".package"
@@ -291,8 +291,28 @@ _COMPILE = (
 )
 
 
+def find_python37():
+    """Return the python.exe of Python 3.7, or None.
+
+    The environment variable TS4_PYTHON37 gives the folder of Python 3.7. Else the tool uses the Python that runs it if
+    that Python is 3.7. Else it asks the Python launcher (py -3.7)."""
+    folder = os.environ.get("TS4_PYTHON37")
+    if folder:
+        return pathlib.Path(folder) / "python.exe"
+    if sys.version_info[:2] == (3, 7):
+        return pathlib.Path(sys.executable)
+    try:
+        output = subprocess.run(["py", "-3.7", "-c", "import sys; print(sys.executable)"], check=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return pathlib.Path(output.strip())
+
+
 def check_python(python):
     """Refuse a Python that is not 3.7."""
+    if python is None:
+        raise BuildError("the build needs Python 3.7: set TS4_PYTHON37 to its folder, or give --python")
     python = pathlib.Path(python)
     if not python.exists():
         raise BuildError("{} does not exist: the build needs Python 3.7".format(python))
@@ -311,8 +331,10 @@ def source_files(source=SOURCE):
     return files
 
 
-def build_script(out_file, python=DEFAULT_PYTHON, source=SOURCE):
+def build_script(out_file, python=None, source=SOURCE):
     """Compile the sources with Python 3.7 and write the .ts4script zip. Return the names in the zip."""
+    if python is None:
+        python = find_python37()
     check_python(python)
     files = source_files(source)
     with tempfile.TemporaryDirectory(prefix="ts4_youtube_tv_build_") as temp:
@@ -337,7 +359,7 @@ def build_script(out_file, python=DEFAULT_PYTHON, source=SOURCE):
     return names
 
 
-def build(out=DEFAULT_OUT, python=DEFAULT_PYTHON):
+def build(out=DEFAULT_OUT, python=None):
     """Build the two files of the mod. Return their paths."""
     out = pathlib.Path(out)
     script = out / SCRIPT_FILE
@@ -364,7 +386,7 @@ def describe(script, package):
 # The self-test
 
 
-def self_test(python=DEFAULT_PYTHON):
+def self_test(python=None):
     """Build into a temporary folder and read the files back."""
     fnv = _fnv()
     assert fnv.fnv1_64("TS4_TV_Comedy_Standup") == 0x8A50833624769271
@@ -393,13 +415,13 @@ def self_test(python=DEFAULT_PYTHON):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Build the script mod of the YouTube TV.")
     parser.add_argument("--out", default=str(DEFAULT_OUT), help="the output folder")
-    parser.add_argument("--python", default=str(DEFAULT_PYTHON), help="Python 3.7 to compile the sources")
+    parser.add_argument("--python", help="Python 3.7 to compile the sources (default: TS4_PYTHON37 or py -3.7)")
     parser.add_argument("--self-test", action="store_true", help="build into a temporary folder and check it")
     args = parser.parse_args(argv)
     try:
         if args.self_test:
-            return self_test(pathlib.Path(args.python))
-        script, package = build(pathlib.Path(args.out), pathlib.Path(args.python))
+            return self_test(args.python)
+        script, package = build(pathlib.Path(args.out), args.python)
         print("\n".join(describe(script, package)))
         return 0
     except (BuildError, subprocess.CalledProcessError) as error:

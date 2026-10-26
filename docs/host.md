@@ -1,5 +1,7 @@
 # The helper `youtube_tv_host.exe`
 
+`<workspace>` is the folder that holds `projects`.
+
 The helper plays a YouTube video with the official YouTube player (the IFrame Player API) in CEF, without a window.
 It gives the frames as I420 planes and the sound as PCM in shared memory. The parent is the DLL mod in the game (and
 the probe `host_probe.exe` for tests). A crash of the helper does not stop the game.
@@ -177,10 +179,12 @@ The main frame cannot go to another page, and the helper blocks popups.
 
 `build\x64-release\tools\host_probe.exe` does what the DLL mod will do, and checks each step: it opens a video
 (`--video`, default `M7lc1UVf-VE`, 1280x720), waits for `playing`, counts the frames, saves one frame changed back
-from I420 to BGRA as a PNG file (`--png`, default `D:\sims_4\screenshots\cef-helper-<date>.png`), reads the audio ring
-and computes the RMS, checks that CEF plays no sound itself, tests `pause`, `play` and `setRate 2` (the actual rate
-and the speed of the time), and sends `quit`. It writes all events to
-`D:\sims_4\runs\<date>-cef-helper\probe-events.log` and returns 0 if all checks pass.
+from I420 to BGRA as a PNG file (`--png`, default `<workspace>\screenshots\cef-helper-<date>.png`), reads the audio
+ring and computes the RMS, checks that CEF plays no sound itself, tests `pause`, `play` and `setRate 2` (the actual
+rate and the speed of the time), and sends `quit`. It writes all events to
+`<workspace>\runs\<date>-cef-helper\probe-events.log` (`--log`) and returns 0 if all checks pass. The probe finds
+`<workspace>` from `TS4_WORKSPACE`, or as the first folder above its exe that holds `projects`. If it finds no
+workspace, give `--png` and `--log`.
 
 ## Install
 

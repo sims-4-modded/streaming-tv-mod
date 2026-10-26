@@ -40,12 +40,37 @@ SCRIPT_FILE = "ts4_youtube_tv.ts4script"
 PACKAGE_FILE = "ts4_youtube_tv.package"
 FILES = (SCRIPT_FILE, PACKAGE_FILE)
 MARKER_MODULE = "ts4_youtube_tv/__init__.pyc"
-# The game folder is read only. The tool refuses a Mods folder in it.
-GAME_FOLDERS = [pathlib.Path(r"F:\Origin Games\The Sims 4")]
-
-
 class InstallError(Exception):
     """An error that stops the operation. The tool shows the text and returns 1."""
+
+
+# The game folder is read only. The tool refuses a Mods folder in it.
+# The keys that the EA app writes when it installs the game. The value "Install Dir" is the game folder.
+GAME_REGISTRY_KEYS = (r"SOFTWARE\Maxis\The Sims 4", r"SOFTWARE\WOW6432Node\Maxis\The Sims 4")
+
+
+def find_game_folders():
+    """Give the game folders: TS4_GAME, else the folder that the EA app wrote in the registry.
+
+    The tool refuses to work if it finds no game folder, because then it cannot keep the game folder read only."""
+    value = os.environ.get("TS4_GAME")
+    if value:
+        return [pathlib.Path(value)]
+    try:
+        import winreg
+    except ImportError:
+        winreg = None
+    if winreg is not None:
+        for key in GAME_REGISTRY_KEYS:
+            try:
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key) as handle:
+                    folder, _ = winreg.QueryValueEx(handle, "Install Dir")
+            except OSError:
+                continue
+            if folder:
+                return [pathlib.Path(folder)]
+    raise InstallError("the game folder is not known: the registry has no Install Dir of The Sims 4. "
+                       "Set TS4_GAME to the game folder.")
 
 
 def _build_tool():
@@ -90,6 +115,8 @@ def check_mods(mods, game_folders):
     """Refuse a Mods folder that does not exist, or one in the game folder."""
     if not mods.is_dir():
         raise InstallError("the Mods folder {} does not exist; start the game once to make it".format(mods))
+    if game_folders is None:
+        game_folders = find_game_folders()
     resolved = mods.resolve()
     for game in game_folders:
         game = game.resolve()
@@ -145,7 +172,7 @@ def state(mods, build=None):
     return rows
 
 
-def install(build, mods, game_folders=GAME_FOLDERS):
+def install(build, mods, game_folders=None):
     """Copy the two files of the build into Mods\\ts4_youtube_tv. Return the copied paths."""
     check_mods(mods, game_folders)
     sources = [build / name for name in FILES]
@@ -172,7 +199,7 @@ def install(build, mods, game_folders=GAME_FOLDERS):
     return copied
 
 
-def uninstall(mods, game_folders=GAME_FOLDERS):
+def uninstall(mods, game_folders=None):
     """Remove the two files of the mod, and the folder if it is then empty. Return the removed paths."""
     check_mods(mods, game_folders)
     folder = mods / FOLDER

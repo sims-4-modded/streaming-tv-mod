@@ -113,6 +113,29 @@ struct Options
 	return std::filesystem::path(path).parent_path();
 }
 
+/// The folder that holds projects. The environment variable TS4_WORKSPACE gives it. Else it is the first folder above
+/// the exe that has a folder projects, because the build is in <workspace>/projects/<repo> or
+/// <workspace>/worktrees/<name>. Returns an empty path if the probe finds no workspace.
+[[nodiscard]] std::filesystem::path Workspace()
+{
+	const auto size = ::GetEnvironmentVariableW(L"TS4_WORKSPACE", nullptr, 0);
+	if (size != 0)
+	{
+		std::wstring value(size, L'\0');
+		value.resize(::GetEnvironmentVariableW(L"TS4_WORKSPACE", value.data(), size));
+		return value;
+	}
+	std::error_code error;
+	for (auto folder = ExeFolder(); folder.has_relative_path(); folder = folder.parent_path())
+	{
+		if (std::filesystem::is_directory(folder / L"projects", error))
+		{
+			return folder;
+		}
+	}
+	return {};
+}
+
 [[nodiscard]] std::string Today()
 {
 	SYSTEMTIME time {};
@@ -124,8 +147,12 @@ struct Options
 {
 	Options options;
 	options.host = ExeFolder().parent_path() / L"host" / L"youtube_tv_host.exe";
-	options.png = std::filesystem::path(L"D:/sims_4/screenshots") / std::format("cef-helper-{}.png", Today());
-	options.log = std::filesystem::path(L"D:/sims_4/runs") / std::format("{}-cef-helper", Today()) / "probe-events.log";
+	// The default files are in the folders of the workspace for screenshots and runs.
+	if (const auto workspace = Workspace(); !workspace.empty())
+	{
+		options.png = workspace / L"screenshots" / std::format("cef-helper-{}.png", Today());
+		options.log = workspace / L"runs" / std::format("{}-cef-helper", Today()) / "probe-events.log";
+	}
 	for (int index = 1; index + 1 < argc; index += 2)
 	{
 		const std::wstring name = argv[index];
@@ -171,6 +198,11 @@ struct Options
 			std::fprintf(stderr, "unknown option %ls\n", name.c_str());
 			return std::nullopt;
 		}
+	}
+	if (options.png.empty() || options.log.empty())
+	{
+		std::fprintf(stderr, "the probe found no workspace: set TS4_WORKSPACE, or give --png and --log\n");
+		return std::nullopt;
 	}
 	return options;
 }

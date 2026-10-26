@@ -1,5 +1,7 @@
 # The script mod
 
+`<workspace>` is the folder that holds `projects`.
+
 The script mod adds the interaction "Watch a YouTube video" to the pie menu of each TV. It shows a text dialog for the
 URL, and it tells the DLL mod `youtube_tv.dll` which TV must show the video. It also sends the speed of the game to the
 DLL mod. The DLL mod and the helper `youtube_tv_host.exe` play the video and the audio (`host.md`).
@@ -12,7 +14,7 @@ The script mod has two files:
 | `ts4_youtube_tv.package` | A DBPF 2.1 package with the tuning of the interaction and a string table for each language. |
 
 The sources are in `python/ts4_youtube_tv` and `tuning`. The research of the game Python is in
-`research/tv/python.md`. The C interface of the DLL mod is in `D:\sims_4\progress\youtube_tv_bridge.md` (version 1) and in `design.md`
+`research/tv/python.md`. The C interface of the DLL mod is in `<workspace>\progress\youtube_tv_bridge.md` (version 1) and in `design.md`
 (version 2 adds `YoutubeTvSetPlaylistClips`).
 
 ## The parts
@@ -164,7 +166,8 @@ build writes one table for each language code, all with the English text.
 | `220557DA` | `80000000` | `xx4B2997C39CE7C9` | The string table (49 bytes) for each language code `xx`: 00 to 08, 0B to 0F, 11 to 15. |
 
 The package has no resource of EA. The build tool reads the package back, and the tests also read it with the
-reader of the research (`D:\sims_4\experiments\tv-mod-research\dbpf_scan.py`).
+reader of the research (`<workspace>\experiments\tv-mod-research\dbpf_scan.py`), when
+`TS4_DBPF_REFERENCE_READER` gives that file.
 
 ## The channel and its sound
 
@@ -248,14 +251,14 @@ The tests make their own SimData bytes (`tests/python/test_playlists.py`) and us
 ```
 python tools/build_script_mod.py               # writes build/script_mod/
 python tools/build_script_mod.py --self-test
-C:\lib\python37\python.exe -B -m unittest discover -s tests/python -p "test_*.py"
+py -3.7 -B -m unittest discover -s tests/python -p "test_*.py"
 ctest --preset x64-release                     # includes the three script_mod tests
 python tools/install_script_mod.py status
 python tools/install_script_mod.py install     # copies the two files to Mods\ts4_youtube_tv
 python tools/install_script_mod.py uninstall
 ```
 
-- The build compiles with `C:\lib\python37\python.exe` only, and checks the magic `42 0D 0D 0A` of each `.pyc`.
+- The build compiles with Python 3.7 only (`TS4_PYTHON37`, else `py -3.7`), and checks the magic `42 0D 0D 0A` of each `.pyc`.
 - The tests run with Python 3.7 and fake game modules (`tests/python/fakes`). They set `LOCALAPPDATA` to a temporary
   folder, so the log and the settings of the tests never go to the folders of the user.
 - The install tool copies only the two files into `Documents\Electronic Arts\The Sims 4\Mods\ts4_youtube_tv\` (one
@@ -267,7 +270,7 @@ python tools/install_script_mod.py uninstall
 
 ## The first game test (2026-10-25)
 
-The run notes are in `D:\sims_4\runs\2026-10-25-tv-first\notes.md`. Proved: the script mod loads (after the Python
+The run notes are in `<workspace>\runs\2026-10-25-tv-first\notes.md`. Proved: the script mod loads (after the Python
 module of the DLL replaced `ctypes`), the injection (38 classes), the pie menu entry, the dialog and its characters
 (`?`, `&`, `=`, `#` and the case come back without a change), the clock values (pause 0/0.0, normal 1/1.0, speed 2
 2/3.0, speed 3 3/7.0), `youtube_tv.info` (`mute_speed` SPEED2, `distortion_speed` SPEED2,

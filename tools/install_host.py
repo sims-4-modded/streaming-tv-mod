@@ -31,12 +31,37 @@ FILE_LIST = "youtube_tv_host_files.txt"
 VERSION_FILE = "youtube_tv_host_version.txt"
 MANIFEST = "youtube_tv_host_manifest.json"
 CACHE_FOLDER = "cache"
-# The game folder is read only. The tool refuses a destination in it or a destination that holds it.
-GAME_FOLDERS = [pathlib.Path(r"F:\Origin Games\The Sims 4")]
-
-
 class InstallError(Exception):
     """An error that stops the operation. The tool shows the text and returns 1."""
+
+
+# The game folder is read only. The tool refuses a destination in it or a destination that holds it.
+# The keys that the EA app writes when it installs the game. The value "Install Dir" is the game folder.
+GAME_REGISTRY_KEYS = (r"SOFTWARE\Maxis\The Sims 4", r"SOFTWARE\WOW6432Node\Maxis\The Sims 4")
+
+
+def find_game_folders():
+    """Give the game folders: TS4_GAME, else the folder that the EA app wrote in the registry.
+
+    The tool refuses to work if it finds no game folder, because then it cannot keep the game folder read only."""
+    value = os.environ.get("TS4_GAME")
+    if value:
+        return [pathlib.Path(value)]
+    try:
+        import winreg
+    except ImportError:
+        winreg = None
+    if winreg is not None:
+        for key in GAME_REGISTRY_KEYS:
+            try:
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key) as handle:
+                    folder, _ = winreg.QueryValueEx(handle, "Install Dir")
+            except OSError:
+                continue
+            if folder:
+                return [pathlib.Path(folder)]
+    raise InstallError("the game folder is not known: the registry has no Install Dir of The Sims 4. "
+                       "Set TS4_GAME to the game folder.")
 
 
 def default_dest():
@@ -58,6 +83,8 @@ def sha256(path):
 
 def check_dest(dest, game_folders):
     """Refuse a destination in the game folder, or one that holds the game folder."""
+    if game_folders is None:
+        game_folders = find_game_folders()
     resolved = dest.resolve()
     for game in game_folders:
         game = game.resolve()
@@ -97,7 +124,7 @@ def remove_empty_folders(dest):
         dest.rmdir()
 
 
-def install(build, dest, game_folders=GAME_FOLDERS, log=print):
+def install(build, dest, game_folders=None, log=print):
     """Copy the files of the helper into the destination and write the manifest."""
     check_dest(dest, game_folders)
     names = read_file_list(build)
@@ -141,7 +168,7 @@ def install(build, dest, game_folders=GAME_FOLDERS, log=print):
     log(f"installed {len(files)} files in {dest} ({copied} copied, {removed} old files removed)")
 
 
-def uninstall(dest, game_folders=GAME_FOLDERS, log=print):
+def uninstall(dest, game_folders=None, log=print):
     """Remove the files of the manifest that did not change, the cache of the helper and the manifest."""
     check_dest(dest, game_folders)
     manifest = read_manifest(dest)

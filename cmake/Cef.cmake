@@ -14,8 +14,16 @@
 # - CEF_BINARY_DIR_RELEASE, CEF_RESOURCE_DIR and CEF_INCLUDE_PATH from the CEF files.
 
 set(TS4_CEF_VERSION "156.0.14+g4fa4ab5+chromium-156.0.8078.48")
+# The default folder is in the cache of the workspace: the folder that holds projects. TS4_WORKSPACE can give it. Else
+# it is two folders above the source folder, because the source is <workspace>/projects/<repo> or
+# <workspace>/worktrees/<name>.
+if (DEFINED ENV{TS4_WORKSPACE})
+  file(TO_CMAKE_PATH "$ENV{TS4_WORKSPACE}" _ts4_workspace)
+else ()
+  get_filename_component(_ts4_workspace "${CMAKE_SOURCE_DIR}/../.." ABSOLUTE)
+endif ()
 set(TS4_CEF_ROOT
-    "D:/sims_4/cache/cef/${TS4_CEF_VERSION}"
+    "${_ts4_workspace}/cache/cef/${TS4_CEF_VERSION}"
     CACHE PATH "The folder of the CEF binary distribution (windows64, minimal) for the helper youtube_tv_host"
 )
 set(TS4_CEF_FOUND OFF)

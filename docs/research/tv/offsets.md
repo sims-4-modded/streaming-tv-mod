@@ -1,8 +1,10 @@
 # The field offsets that the DLL mod reads from the code of the game
 
+`<workspace>` is the folder that holds `projects`.
+
 Lane `tv-dll`, 2026-10-25. Tree of every RVA in this note: **`TS4_x64_1.128.90.1030`** (the decrypted exe,
-`D:\sims_4\dump\TS4_1.128.90.1030\TS4_x64.image.bin`). The catalogue entries
-(`D:\sims_4\ghidra-catalogue\TS4_x64_1.128.90.1030\fn\<RVA>.md`) have the full disassembly.
+`<workspace>\dump\TS4_1.128.90.1030\TS4_x64.image.bin`). The catalogue entries
+(`<workspace>\ghidra-catalogue\TS4_x64_1.128.90.1030\fn\<RVA>.md`) have the full disassembly.
 
 The rule of `ts4-modern-cpp`: a field offset of a game object comes only from an instruction of the game. The mod
 finds the function by its signature, searches a window of its code for one instruction pattern, and reads the
@@ -54,7 +56,7 @@ compare at `0x01A789E0` matches one.
 
 The object id of a playlist message is at op +0x30: the key of the object at +0x28, and the id 8 bytes into it. The
 first version read op +0x28 and got another field of the key (for example `0x7ff400000001`); the third game test
-(`D:\sims_4\runs\2026-10-25-tv-third\notes.md`) showed it. Thus the playlist never linked the channel of our TV.
+(`<workspace>\runs\2026-10-25-tv-third\notes.md`) showed it. Thus the playlist never linked the channel of our TV.
 
 ### The bytes of the message
 
@@ -126,7 +128,7 @@ to its channel by the clip:
 3. The time rule, for the TVs: when a channel starts a clip that is in no list, the channel goes to the object whose
    newest list no channel showed yet and came in the last 1.5 s (the newest list first).
 
-Rule 3 is necessary. Game start 1 of the fifth test (`D:\sims_4\runs\2026-10-25-tv-fifth\notes.md`) showed that
+Rule 3 is necessary. Game start 1 of the fifth test (`<workspace>\runs\2026-10-25-tv-fifth\notes.md`) showed that
 the channel of a TV does not play the key of its list. The playlist of our TV had one key of the type `0x545AC67A`
 (`efe29ab011f5411a:545ac67a:00bf458b`), and 16 ms later a new channel showed its first frame with a VP6 key
 (`ea6fc4038e0f1ec3:376840d7:00000000`) that no message had. The code of the channel does not explain the change:

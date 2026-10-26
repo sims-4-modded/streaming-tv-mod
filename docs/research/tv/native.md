@@ -1,10 +1,12 @@
 # TV video and audio: the native side
 
+`<workspace>` is the folder that holds `projects`.
+
 Lane `tv-native`, 2026-10-25. Research only; no game run.
 
 Tree of every RVA in this note: **`TS4_x64_1.128.90.1030`** (the decrypted exe), unless a line names
 `Simulation_x64_1.128.90.1030`. The catalogue holds the detail of each function
-(`D:\sims_4\ghidra-catalogue\TS4_x64_1.128.90.1030\fn\<RVA>.md`). Names in the form `FUN_<rva>` have no name in Ghidra;
+(`<workspace>\ghidra-catalogue\TS4_x64_1.128.90.1030\fn\<RVA>.md`). Names in the form `FUN_<rva>` have no name in Ghidra;
 the names in this note are our names (each catalogue entry has the name in its comments).
 
 ## Summary

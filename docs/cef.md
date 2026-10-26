@@ -1,5 +1,7 @@
 # CEF for the helper
 
+`<workspace>` is the folder that holds `projects`.
+
 The helper `youtube_tv_host.exe` uses a binary distribution of the Chromium Embedded Framework (CEF). The distribution
 is not in the repository and not in the game folder. It is in the cache of the projects.
 
@@ -15,8 +17,8 @@ is not in the repository and not in the game folder. It is in the cache of the p
 | Size of the archive | 175,051,364 bytes (167 MiB) |
 | SHA-1 (published) | `72dc1dd1636acc2391609fa6f410aa09f09168d4` |
 | SHA-256 (of the downloaded file) | `99f8a6dffd47417e0caee7845a98c549b41f1d4246cd715dec843ca4b699ee57` |
-| Folder | `D:\sims_4\cache\cef\156.0.14+g4fa4ab5+chromium-156.0.8078.48\` (444,643,841 bytes after the extraction) |
-| Archive kept in | `D:\sims_4\cache\cef\dl\` |
+| Folder | `<workspace>\cache\cef\156.0.14+g4fa4ab5+chromium-156.0.8078.48\` (444,643,841 bytes after the extraction) |
+| Archive kept in | `<workspace>\cache\cef\dl\` |
 
 The site of the builds publishes only a SHA-1 for each file, in `index.json` and in a `.sha1` file next to the
 archive. The SHA-1 of the downloaded file was the same as both. The SHA-256 above is our own value of the same file.
@@ -28,7 +30,7 @@ the source of `libcef_dll_wrapper`. It has no sample applications and no debug f
 
 1. Download the file of the table from `https://cef-builds.spotifycdn.com/` (the `+` characters are `%2B` in the URL).
 2. Compare its SHA-1 with the table, or with the `.sha1` file at the same URL.
-3. Extract it into `D:\sims_4\cache\cef\<version>\` without the first folder of the archive
+3. Extract it into `<workspace>\cache\cef\<version>\` without the first folder of the archive
    (`tar -xjf <file> -C <folder> --strip-components=1`).
 
 To use a different folder, set the cache variable `TS4_CEF_ROOT` (`cmake --preset x64-release -DTS4_CEF_ROOT=<folder>`).

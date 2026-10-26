@@ -1,7 +1,9 @@
 # The TV in the game Python
 
+`<workspace>` is the folder that holds `projects`.
+
 Game version 1.128.90.1030. Research of 2026-10-25 (lane tv-python), from the decompiled game Python in
-`D:\sims_4\cache\gameplay\1.128.90.1030\` (EA's code: never commit or publish it). Native side:
+`<workspace>\cache\gameplay\1.128.90.1030\` (EA's code: never commit or publish it). Native side:
 `native.md` in this folder.
 
 ## How the game knows a TV

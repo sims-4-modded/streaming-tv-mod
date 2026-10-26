@@ -18,7 +18,10 @@ import build_script_mod as build
 from ts4_youtube_tv import fnv
 from ts4_youtube_tv import interaction
 
-REFERENCE_READER = pathlib.Path(r"D:\sims_4\experiments\tv-mod-research\dbpf_scan.py")
+# The package reader of the research, which reads a package with other code. The environment variable
+# TS4_DBPF_REFERENCE_READER gives its file. If it is not set, the test that uses it is skipped.
+REFERENCE_READER = pathlib.Path(os.environ["TS4_DBPF_REFERENCE_READER"]) if os.environ.get(
+    "TS4_DBPF_REFERENCE_READER") else None
 
 
 def load_reference_reader():
@@ -40,7 +43,8 @@ class PackageTest(unittest.TestCase):
         with self.assertRaises(build.BuildError):
             build.write_dbpf([((1, 2, 3), b"a"), ((1, 2, 3), b"b")])
 
-    @unittest.skipUnless(REFERENCE_READER.exists(), "the reference reader of the research is not here")
+    @unittest.skipUnless(REFERENCE_READER and REFERENCE_READER.exists(),
+                         "TS4_DBPF_REFERENCE_READER does not give the reference reader of the research")
     def test_the_reference_reader_reads_the_package(self):
         reader = load_reference_reader()
         resources = build.package_resources()
@@ -101,8 +105,9 @@ class ScriptTest(unittest.TestCase):
     def python37(self):
         if sys.version_info[:2] == (3, 7):
             return pathlib.Path(sys.executable)
-        if build.DEFAULT_PYTHON.exists():
-            return build.DEFAULT_PYTHON
+        python = build.find_python37()
+        if python is not None and python.exists():
+            return python
         self.skipTest("Python 3.7 is not installed")
 
     def test_the_script_is_a_zip_of_python_37_bytecode(self):

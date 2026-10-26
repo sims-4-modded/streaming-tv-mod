@@ -1,5 +1,7 @@
 # The design of youtube_tv.dll
 
+`<workspace>` is the folder that holds `projects`.
+
 The DLL mod shows a YouTube video on the screen of a TV in the game, with the audio at the position of the TV. The
 helper `youtube_tv_host.exe` plays the video (`docs/host.md`). The script mod gives the TV, the URL, the clock and the
 positions. This file tells the parts, the threads, the data flow and the open points. The research is in
@@ -216,7 +218,7 @@ tries again.
 
 ## The C interface for the script mod (version 2)
 
-As `D:\sims_4\progress\youtube_tv_bridge.md` gives it: `extern "C"`, `__cdecl`, UTF-8, no exception goes out, each
+As `<workspace>\progress\youtube_tv_bridge.md` gives it: `extern "C"`, `__cdecl`, UTF-8, no exception goes out, each
 pointer and value checked (`src/core/BridgeArgs.h`), the last error set by each call (empty after a call that
 succeeds). Version 2 added `YoutubeTvSetPlaylistClips`; the other functions did not change. The script mod accepts
 a DLL of version 1 and then sends no playlists.

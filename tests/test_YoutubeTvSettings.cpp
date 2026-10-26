@@ -65,7 +65,7 @@ TEST(YoutubeTvSettings, WritesWhatItReads)
 {
 	YoutubeTvSettings settings;
 	settings.enabled = false;
-	settings.helperPath = "D:/helper/youtube_tv_host.exe";
+	settings.helperPath = "E:/helper/youtube_tv_host.exe";
 	settings.volume = 0.25;
 	settings.maxSessions = 3;
 	settings.range = YuvRange::Full;
