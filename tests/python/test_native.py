@@ -43,9 +43,9 @@ class NativeTest(unittest.TestCase):
         self.assertEqual(_log_text().count("the YouTube TV is off"), before + 1)
 
     def test_turns_off_for_another_api_version(self):
-        dll = support.use_dll(support.FakeDll(version=2))
+        dll = support.use_dll(support.FakeDll(version=3))
         self.assertFalse(native.available())
-        self.assertIn("API version 2", native.reason())
+        self.assertIn("API version 3", native.reason())
         native.set_speed(1, 1.0, False)
         self.assertEqual(dll.YoutubeTvSetSpeed.calls, [])
 
@@ -98,6 +98,37 @@ class NativeTest(unittest.TestCase):
         native.set_transform(9, (4, 5, 6), (0, 0, 0, 1))
         self.assertEqual(list(dll.YoutubeTvSetTransform.calls[0][1]), [4.0, 5.0, 6.0])
 
+    def test_sends_the_clips_of_a_playlist(self):
+        dll = support.use_dll(support.FakeDll(version=2))
+        self.assertTrue(native.has_playlist_clips())
+        self.assertEqual(dll.YoutubeTvSetPlaylistClips.argtypes,
+                         (ctypes.c_uint64, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_char_p, ctypes.c_uint32))
+        ok, error = native.set_playlist_clips((0xEFE29AB011F5411A, 0x545AC67A, 0x00BF458B),
+                                              [(0xEA6FC4038E0F1EC3, 0x376840D7, 0), (1, 2, 3)])
+        self.assertTrue(ok, error)
+        instance, resource_type, group, data, size = dll.YoutubeTvSetPlaylistClips.calls[0]
+        self.assertEqual((instance, resource_type, group), (0xEFE29AB011F5411A, 0x545AC67A, 0x00BF458B))
+        self.assertEqual(size, 32)
+        self.assertEqual(data[:16], bytes.fromhex("c31e0f8e03c46fead740683700000000"))
+        self.assertEqual(data[16:], bytes.fromhex("01000000000000000200000003000000"))
+
+    def test_gives_the_error_of_a_refused_playlist(self):
+        dll = support.use_dll(support.FakeDll(version=2, error=b"the limit of 256 playlists is full"))
+        dll.YoutubeTvSetPlaylistClips.result = 0
+        self.assertEqual(native.set_playlist_clips((1, 0x545AC67A, 0), [(2, 3, 4)]),
+                         (False, "the limit of 256 playlists is full"))
+
+    def test_a_dll_of_version_1_works_with_no_playlist_link(self):
+        dll = support.use_dll(support.FakeDll(version=1))
+        self.assertTrue(native.available())
+        self.assertFalse(native.has_playlist_clips())
+        ok, error = native.set_playlist_clips((1, 0x545AC67A, 0), [(2, 3, 4)])
+        self.assertFalse(ok)
+        self.assertIn("API version 1", error)
+        self.assertFalse(hasattr(dll, "YoutubeTvSetPlaylistClips"))
+        native.set_speed(1, 1.0, False)
+        self.assertEqual(dll.YoutubeTvSetSpeed.calls, [(1, 1.0, 0)])
+
     def test_catches_an_exception_of_a_call(self):
         dll = support.use_dll(support.FakeDll())
 
@@ -143,6 +174,16 @@ class FakeNativeModule(types.ModuleType):
     def set_screen_key(self, object_id, instance, resource_type, group):
         self.calls.append(("set_screen_key", object_id, instance, resource_type, group))
 
+    def __getattr__(self, name):
+        # Only a module of version 2 or more has set_playlist_clips.
+        if name == "set_playlist_clips" and self.version >= 2:
+            return self._set_playlist_clips
+        raise AttributeError(name)
+
+    def _set_playlist_clips(self, playlist_key, clip_keys):
+        self.calls.append(("set_playlist_clips", playlist_key, clip_keys))
+        return 1
+
     def last_error(self):
         return self.error
 
@@ -179,6 +220,21 @@ class NativeModuleTest(unittest.TestCase):
                          ["set_speed", "stop", "stop_all", "set_screen_key", "set_transform"])
         self.assertEqual(module.calls[1], ("set_speed", 5, 25.0, 1))
 
+    def test_sends_the_clips_of_a_playlist_to_the_module(self):
+        module = self.use_module(FakeNativeModule(version=2))
+        self.assertTrue(native.has_playlist_clips())
+        ok, error = native.set_playlist_clips((5, 0x545AC67A, 0x00BF458B), [(6, 0x376840D7, 0)])
+        self.assertTrue(ok, error)
+        self.assertEqual(module.calls[-1], ("set_playlist_clips", (5, 0x545AC67A, 0x00BF458B),
+                                            bytes.fromhex("0600000000000000d740683700000000")))
+
+    def test_a_module_of_version_1_has_no_playlist_link(self):
+        module = self.use_module(FakeNativeModule(version=1))
+        self.assertTrue(native.available())
+        self.assertFalse(native.has_playlist_clips())
+        self.assertFalse(native.set_playlist_clips((5, 0x545AC67A, 0), [(6, 7, 0)])[0])
+        self.assertEqual(module.calls, [])
+
     def test_gives_the_status_of_the_python_module(self):
         self.use_module(FakeNativeModule())
         self.assertEqual(native.status_text(), '{"renderCalls": 3}')
@@ -192,9 +248,9 @@ class NativeModuleTest(unittest.TestCase):
         self.assertEqual(error, "the helper is not installed")
 
     def test_turns_off_for_another_api_version_of_the_module(self):
-        self.use_module(FakeNativeModule(version=2))
+        self.use_module(FakeNativeModule(version=3))
         self.assertFalse(native.available())
-        self.assertIn("API version 2", native.reason())
+        self.assertIn("API version 3", native.reason())
 
     def test_tries_again_when_the_module_comes_later(self):
         saved = native.ctypes

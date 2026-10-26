@@ -5,8 +5,8 @@
 """The script mod of the YouTube TV.
 
 The game imports this package when it loads ts4_youtube_tv.ts4script from the Mods folder. The import reads the
-settings, wraps the game functions (the clock, the Video component, the zone teardown), registers the injection of the
-interaction, and registers the cheat commands. An error in one part writes a log line and does not stop the other
+settings, wraps the game functions (the clock, the Video component, the zone start and teardown), registers the
+injection of the interaction, and registers the cheat commands. An error in one part writes a log line and does not stop the other
 parts or the game.
 """
 
@@ -20,6 +20,7 @@ def _start():
         ("settings", "settings", "load"),
         ("clock", "clock", "install"),
         ("session", "session", "install"),
+        ("playlists", "playlists", "install"),
         ("injection", "injection", "install"),
         ("commands", "commands", None),
         ("interaction", "interaction", None),

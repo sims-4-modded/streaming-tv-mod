@@ -26,6 +26,7 @@ import sims4.commands
 from . import clock
 from . import log
 from . import native
+from . import playlists
 from . import session
 from . import settings
 from . import tv
@@ -95,6 +96,7 @@ def run_status(connection):
     _output("Last speed sent: {}.".format(
         "none" if clock.last_sent is None else "mode={}, scale={}, super_speed={}".format(*clock.last_sent)),
         connection)
+    _output("Playlists: {}.".format(playlists.last_result or "not sent"), connection)
     dll_status = native.status_text()
     if dll_status:
         _output("DLL: {}".format(dll_status), connection)

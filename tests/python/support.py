@@ -244,7 +244,7 @@ class FakeFunction:
 
 
 class FakeDll:
-    """A fake youtube_tv.dll with the functions of bridge version 1."""
+    """A fake youtube_tv.dll with the functions of the bridge. Only version 2 or more has YoutubeTvSetPlaylistClips."""
 
     def __init__(self, version=1, play_result=1, error=b""):
         self.error = error
@@ -257,6 +257,8 @@ class FakeDll:
         self.YoutubeTvSetScreenKey = FakeFunction(None)
         self.YoutubeTvLastError = FakeFunction(side_effect=self._last_error)
         self.set_frame_mode = FakeFunction(1)
+        if version >= 2:
+            self.YoutubeTvSetPlaylistClips = FakeFunction(1)
 
     def _last_error(self, buffer, size):
         data = self.error[:size - 1]

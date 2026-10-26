@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Sims 4 mods developers
 # ******************************************************************************
 
-"""The bridge from the script mod to the DLL mod youtube_tv.dll (bridge version 1).
+"""The bridge from the script mod to the DLL mod youtube_tv.dll (bridge version 2; version 1 also works).
 
 Only this module knows the C interface of the DLL mod. When the extender gets its native Python module, only this
 module changes.
@@ -10,15 +10,19 @@ module changes.
 The extender loads youtube_tv.dll. The game Python has no ctypes, so the DLL adds the Python module
 ts4_youtube_tv_native to sys.modules. This module uses that Python module first. If the Python module is not there and
 ctypes is there, this module gets the handle of the loaded DLL and makes a ctypes library from that handle. It does
-not load a second copy of the DLL. If neither works, or the API version is not 1, the bridge turns off with one log
-line. Then each function of this module does nothing and returns a failure. If the DLL is not there yet, the next
+not load a second copy of the DLL. If neither works, or the API version is not 1 or 2, the bridge turns off with one
+log line. Then each function of this module does nothing and returns a failure. If the DLL is not there yet, the next
 call tries again.
+
+Version 2 added set_playlist_clips. With a DLL of version 1, set_playlist_clips does nothing and returns a failure,
+and the other functions work.
 
 Each function of this module catches each exception, writes it to the log, and returns a failure. The game Python
 calls these functions on the main thread, as the bridge needs.
 """
 
 import importlib
+import struct
 
 from . import log
 
@@ -30,7 +34,11 @@ except ImportError:
 
 DLL_NAME = "youtube_tv.dll"
 MODULE_NAME = "ts4_youtube_tv_native"
-API_VERSION = 1
+API_VERSION = 2
+# The oldest API version that the script mod accepts.
+MIN_API_VERSION = 1
+# The first API version with set_playlist_clips.
+PLAYLIST_API_VERSION = 2
 
 _ERROR_BUFFER_SIZE = 1024
 
@@ -69,6 +77,12 @@ class _ModuleLibrary:
 
     def YoutubeTvSetScreenKey(self, object_id, instance, resource_type, group):
         self._module.set_screen_key(object_id, instance, resource_type, group)
+
+    def YoutubeTvSetPlaylistClips(self, instance, resource_type, group, clip_keys, size):
+        return self._module.set_playlist_clips((instance, resource_type, group), clip_keys)
+
+    def has_playlist_clips(self):
+        return hasattr(self._module, "set_playlist_clips")
 
     def last_error_text(self):
         return self._module.last_error()
@@ -120,6 +134,11 @@ def _set_prototypes(dll):
         function = getattr(dll, name)
         function.argtypes = argtypes
         function.restype = restype
+    # A DLL of version 1 does not have this function.
+    function = getattr(dll, "YoutubeTvSetPlaylistClips", None)
+    if function is not None:
+        function.argtypes = (ctypes.c_uint64, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_char_p, ctypes.c_uint32)
+        function.restype = ctypes.c_uint32
 
 
 def reset(opener=None):
@@ -153,9 +172,9 @@ def load():
         _loaded = True
         _set_prototypes(dll)
         _api_version = int(dll.YoutubeTvApiVersion())
-        if _api_version != API_VERSION:
-            _reason = "{} has the API version {}, but the script mod needs {}".format(
-                DLL_NAME, _api_version, API_VERSION)
+        if not MIN_API_VERSION <= _api_version <= API_VERSION:
+            _reason = "{} has the API version {}, but the script mod needs {} to {}".format(
+                DLL_NAME, _api_version, MIN_API_VERSION, API_VERSION)
             log.write("native: the YouTube TV is off: {}".format(_reason))
             return False
         _dll = dll
@@ -292,6 +311,42 @@ def set_screen_key(object_id, instance, resource_type, group):
         _dll.YoutubeTvSetScreenKey(int(object_id), int(instance), int(resource_type), int(group))
     except Exception:  # noqa: BLE001
         log.exception("native: YoutubeTvSetScreenKey failed for the object {}".format(object_id))
+
+
+def has_playlist_clips():
+    """Return True if the DLL mod takes the clips of a playlist resource (API version 2 or more)."""
+    if not available() or _api_version < PLAYLIST_API_VERSION:
+        return False
+    check = getattr(_dll, "has_playlist_clips", None)
+    if check is not None:
+        return bool(check())
+    return getattr(_dll, "YoutubeTvSetPlaylistClips", None) is not None
+
+
+def pack_keys(keys):
+    """Return the 16-byte rows (u64 instance, u32 type, u32 group) of the keys, as the DLL mod reads them."""
+    return b"".join(struct.pack("<QII", int(instance), int(resource_type), int(group))
+                    for instance, resource_type, group in keys)
+
+
+def set_playlist_clips(playlist_key, clip_keys):
+    """Send the clip keys of a playlist resource. Each key is (instance, type, group).
+
+    Return (True, None) or (False, the error).
+    """
+    if not available():
+        return False, _reason
+    if not has_playlist_clips():
+        return False, "{} has the API version {}, with no set_playlist_clips".format(DLL_NAME, _api_version)
+    try:
+        instance, resource_type, group = (int(value) for value in playlist_key)
+        data = pack_keys(clip_keys)
+        result = _dll.YoutubeTvSetPlaylistClips(instance, resource_type, group, data, len(data))
+        if int(result) == 1:
+            return True, None
+        return False, last_error() or "the DLL mod refused the playlist"
+    except Exception as error:  # noqa: BLE001
+        return False, "the bridge to the DLL mod failed: {!r}".format(error)
 
 
 def set_frame_mode(mode):
