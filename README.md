@@ -1,75 +1,41 @@
 # The Sims 4: YouTube TV
 
-The template of a DLL mod (`youtube_tv.dll`) for the extender of The Sims 4 (the project `mod_loader`). Copy it to
-start a new mod. It has the folder structure, the config files, the build and the tests of every mod of the projects.
+A DLL mod for the Sims 4 mod loader that shows a YouTube video on the screen of a TV in the game.
 
-- `src/core`: the logic of the mod that does not need the game (here: the settings). A static library with tests.
-- `src/game`: the DLL entry (`ModMain.cpp`) and the parts that touch the game. Windows only.
-- `src/host`: the helper `youtube_tv_host.exe` (CEF with the YouTube IFrame Player API). See `docs/host.md`.
-- `tests`: the GoogleTest tests of `src/core`, with fakes, never with the game or game data.
-- `external/common`: the shared code (git submodule): `Result`, the game version, the C interface of the extender
-  (`Ts4ModApi.h`) and its C++ side (`ModHost`).
-- `tools/preset.bat`: configure, compile and test in the MSVC x64 environment.
-
-## Make a new mod from the template
-
-On GitHub, use the template repository ("Use this template"). On this computer:
-
-```bat
-git clone D:\sims_4\projects\youtube_tv D:\sims_4\projects\<mod_id>
-cd D:\sims_4\projects\<mod_id>
-git -c protocol.file.allow=always submodule update --init
-python tools\rename_mod.py <mod_id> "<Mod name>"
-```
-
-`rename_mod.py` changes the names of the template (the DLL, the targets, the namespace, the classes, the files and the
-settings file) to the names of the new mod. Then make a new history (`git checkout --orphan main`), or keep the
-history of the template.
+- A Sim can watch a YouTube video on a TV from the pie menu.
+- The helper `youtube_tv_host.exe` plays the video in CEF, without a window.
+- The DLL mod writes the frames on the screen of the TV, and plays the sound at the position of the TV.
+- The script mod gives the TV, the URL and the clock.
 
 ## Build
 
-Requirements: Visual Studio with the C++ tools, and the vcpkg checkout `D:\sims_4\vcpkg`.
+Requirements: Visual Studio with the C++ tools, and the vcpkg checkout of the workspace (`<workspace>\vcpkg`, where
+the workspace is the folder that holds `projects`). The helper also needs CEF in `<workspace>\cache\cef`
+(`docs/cef.md`).
 
 ```bat
-git -c protocol.file.allow=always submodule update --init
+git submodule update --init
 tools\preset.bat x64-release
+python tools\build_script_mod.py
 ```
 
-The DLL uses the static C runtime (triplet `x64-windows-static`) and brings no other DLL.
+A clone of a local repository needs `git -c protocol.file.allow=always submodule update --init`.
 
 ## Tests
 
-`ctest --preset x64-release` runs the GoogleTest tests of `src/core`.
+`ctest --preset x64-release` runs the GoogleTest tests and the script mod tests. These need Python 3.7
+(`TS4_PYTHON37`, or `py -3.7`):
 
-## Settings
-
-The mod reads `youtube_tv.json` in the settings folder that the extender gives. A missing file or field keeps its
-default:
-
-```json
-{ "enabled": true, "strength": 1.0 }
+```bat
+py -3.7 -B -m unittest discover -s tests/python -p "test_*.py"
 ```
 
-## Install (not done by the build)
+## How to install
 
-The DLL goes into the folder of DLL mods of the extender. Only the install tool of `mod_loader` adds and removes it:
+The DLL goes into the DLL mods folder of the loader; the script mod goes into the Mods folder of the game.
 
 ```bat
 python ..\mod_loader\tools\install.py mods add build\x64-release\youtube_tv.dll
-```
-
-## The helper youtube_tv_host.exe
-
-The helper plays the video in CEF without a window, and gives the frames (I420) and the sound (PCM) to the DLL mod
-through shared memory. The build makes it only if the CEF distribution of `docs/cef.md` is in `D:\sims_4\cache\cef`
-(or in the folder of the cache variable `TS4_CEF_ROOT`).
-
-```bat
-build\x64-release\tools\host_probe.exe
+python tools\install_script_mod.py install
 python tools\install_host.py install
-python tools\install_host.py status
 ```
-
-`host_probe.exe` starts the helper, plays one video and checks the frames, the sound and the commands.
-`install_host.py` copies the helper and the CEF runtime to `%LOCALAPPDATA%\Sims4Mods\youtube_tv\`. The protocol, the
-shared memory and the limits are in `docs/host.md`.
