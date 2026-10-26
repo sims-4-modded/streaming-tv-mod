@@ -71,7 +71,7 @@ Each wrap keeps the original function and calls it. A second install does not wr
 | `objects.components.video.VideoComponent.add_video_clips` | The same as `set_video_clips`. |
 | `objects.components.video.VideoComponent.on_remove` | Stops the session of the TV, then calls the original. This occurs when the player sells or removes the TV. |
 | `zone.Zone.start_services` | Calls the original first. Then it sends the clips of each playlist resource (`set_playlist_clips`). The zone loads its objects after this function, so the DLL mod has the clips before a TV gets a list. |
-| `sims4.resources.list(type=Types.PLAYLIST)`, `sims4.resources.load(key)` | Give the keys of the playlist resources and the bytes of each one (`playlists.py`). |
+| `sims4.resources.list(type=Types.PLAYLIST, group=0x00BF458B)`, `sims4.resources.load(key)` | Give the keys of the playlist resources and the bytes of each one (`playlists.py`). |
 | `zone.Zone.on_teardown` | Stops all sessions (`YoutubeTvStopAll`), then calls the original. This is the zone unload: `Zone.on_teardown` calls `on_zone_unload` of each service, and the objects of the zone still exist at that time. |
 | The OBJECT instance manager: `add_on_load_complete` | Registers the injection. |
 | `GameObject.register_on_location_changed` | The mod registers a callback for each TV with a session. When the TV moves, the callback sends the new transform (`YoutubeTvSetTransform`). |
@@ -212,7 +212,9 @@ the clips of each playlist resource.
 
 `playlists.py` does this at each zone start (the wrap of `Zone.start_services`):
 
-1. `sims4.resources.list(type=Types.PLAYLIST)` gives the keys. The mod sends at most 256 playlists.
+1. `sims4.resources.list(type=Types.PLAYLIST, group=0x00BF458B)` gives the keys. The type is the type of all SimData
+   resources (approximately 79,000 in the game, the test of 2026-10-26); only the group `0x00BF458B` has the
+   playlists. The mod sends at most 256 playlists.
 2. `sims4.resources.load(key)` gives the SimData of each one. The parser reads only what the client reads: the first
    table header, its row (a relative offset), and the vector `Keys` at the start of the row (a relative offset and a
    count). Each key has 16 bytes: a u64 instance, a u32 type and a u32 group. Each relative offset counts from its

@@ -26,6 +26,7 @@ from . import native
 
 _WRAP_MARK = "_ts4_youtube_tv_wrapped"
 
+# The type of all SimData resources. Only the resources of the group PLAYLIST_GROUP are playlists.
 PLAYLIST_TYPE = 0x545AC67A
 PLAYLIST_GROUP = 0x00BF458B
 
@@ -108,7 +109,9 @@ def send_all():
             return 0
         import sims4.resources
         playlist_type = getattr(sims4.resources.Types, "PLAYLIST", PLAYLIST_TYPE)
-        keys = list(sims4.resources.list(type=playlist_type))
+        # The game has many SimData resources of this type. Keep only the playlists.
+        keys = [key for key in sims4.resources.list(type=playlist_type, group=PLAYLIST_GROUP)
+                if int(key.group) == PLAYLIST_GROUP]
     except Exception as error:  # noqa: BLE001 - the DLL mod then uses its time rule.
         last_result = "the list of the playlist resources failed: {!r}".format(error)
         log.write("playlists: not sent: {}".format(last_result))

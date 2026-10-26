@@ -129,6 +129,14 @@ class SendTest(unittest.TestCase):
         self.assertEqual(len(sent[1][3]), 64)
         self.assertIn("sent 2 of 3 playlists with 5 clips; 0 failed", playlists.last_result)
 
+    def test_sends_only_the_simdata_of_the_playlist_group(self):
+        resources.resources[(PLAYLIST, 0x13, GROUP)] = simdata(ACTION_KEYS)
+        # SimData of another group: the game has many of these, with a different layout.
+        resources.resources[(PLAYLIST, 0x14, 0x0017E8F6)] = b"other SimData"
+        self.assertEqual(playlists.send_all(), 1)
+        self.assertEqual([call[:3] for call in self.sent()], [(0x13, PLAYLIST, GROUP)])
+        self.assertIn("sent 1 of 1 playlists with 4 clips; 0 failed", playlists.last_result)
+
     def test_a_bad_playlist_does_not_stop_the_others(self):
         resources.resources[(PLAYLIST, 0x11, GROUP)] = b"not SimData"
         resources.resources[(PLAYLIST, 0x12, GROUP)] = KeyError("no resource")
