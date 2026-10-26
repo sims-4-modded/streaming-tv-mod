@@ -208,6 +208,30 @@ PyObject* SetScreenKey(PyObject*, PyObject* args)
 	});
 }
 
+PyObject* SetPlaylistClips(PyObject*, PyObject* args)
+{
+	return Guarded([args](const ModuleExports& py) -> PyObject* {
+		unsigned long long instance = 0;
+		unsigned int type = 0;
+		unsigned int group = 0;
+		const char* bytes = nullptr;
+		// The exported `PyArg_ParseTuple` of Python 3.7 gives the length of `y#` as an int.
+		int size = 0;
+		if (py.PyArg_ParseTuple(args, "(KII)y#:set_playlist_clips", &instance, &type, &group, &bytes, &size) == 0)
+		{
+			return nullptr;
+		}
+		if (size < 0)
+		{
+			py.PyErr_SetString(*py.PyExc_RuntimeError, "the clip keys have a negative size");
+			return nullptr;
+		}
+		return py.Py_BuildValue("I",
+		                        YoutubeTvSetPlaylistClips(instance, type, group, reinterpret_cast<const std::uint8_t*>(bytes),
+		                                                  static_cast<std::uint32_t>(size)));
+	});
+}
+
 PyObject* LastError(PyObject*, PyObject*)
 {
 	return Guarded([](const ModuleExports& py) {
@@ -262,7 +286,7 @@ PyObject* SetFrameMode(PyObject*, PyObject* args)
 }
 
 /// The functions of the module. Python keeps pointers to these rows, so the table is static.
-std::array<PyMethodDef, 10> s_methods {{
+std::array<PyMethodDef, 11> s_methods {{
     {"api_version", &ApiVersion, k_MethNoArgs, "api_version() -> int: the version of the bridge."},
     {"play", &Play, k_MethVarArgs, "play(object_id, url, (x, y, z), (x, y, z, w)) -> int: 1, or 0 and last_error()."},
     {"stop", &Stop, k_MethVarArgs, "stop(object_id) -> int: 1 if a video stopped."},
@@ -270,6 +294,9 @@ std::array<PyMethodDef, 10> s_methods {{
     {"set_speed", &SetSpeed, k_MethVarArgs, "set_speed(mode, scale, super_speed): the clock of the game."},
     {"set_transform", &SetTransform, k_MethVarArgs, "set_transform(object_id, (x, y, z), (x, y, z, w))."},
     {"set_screen_key", &SetScreenKey, k_MethVarArgs, "set_screen_key(object_id, instance, type, group)."},
+    {"set_playlist_clips", &SetPlaylistClips, k_MethVarArgs,
+     "set_playlist_clips((instance, type, group), clip_keys) -> int: the 16-byte keys of a playlist; 1, or 0 and "
+     "last_error()."},
     {"last_error", &LastError, k_MethNoArgs, "last_error() -> str: the error of the last call."},
     {"status", &Status, k_MethNoArgs, "status() -> str: the status of the DLL as JSON text."},
     {"set_frame_mode", &SetFrameMode, k_MethVarArgs, "set_frame_mode(mode) -> int: write video, off or bars (tests)."},

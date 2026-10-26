@@ -72,6 +72,8 @@ public:
 	void SetSpeed(ClockSpeedMode mode, bool superSpeed, double scale = 1.0);
 	void SetTransform(std::uint64_t objectId, const ObjectTransform& transform);
 	void SetScreenKey(std::uint64_t objectId, const ScreenKey& key);
+	/// Keep the clip keys of a playlist resource (`SessionManager::SetPlaylistClips`).
+	[[nodiscard]] ts4::Result<void> SetPlaylistClips(const ScreenKey& playlist, std::vector<ScreenKey> clips);
 	[[nodiscard]] nlohmann::json Status();
 
 	// The hook callbacks.

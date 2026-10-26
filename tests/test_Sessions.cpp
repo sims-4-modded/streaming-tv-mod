@@ -373,6 +373,127 @@ TEST(Sessions, TheTimeRuleTakesTheNewestListThatNoChannelShowed)
 	EXPECT_EQ(Link(manager, 0xC000, k_Music, 12010ms), k_OtherTv);
 }
 
+// The playlist resources of the TV channels, and their VP6 clips. The clip k_SurfAction is in two playlists.
+constexpr ScreenKey k_Action {.instance = 0xEFE29AB011F5411A, .type = k_PlaylistType, .group = 0x00BF458B};
+constexpr ScreenKey k_Surf {.instance = 0x0BADC0FFEE000001, .type = k_PlaylistType, .group = 0x00BF458B};
+constexpr ScreenKey k_ActionClip2 {.instance = 0xF8C9E12DB961C34A, .type = 0x376840D7, .group = 0};
+constexpr ScreenKey k_SurfAction {.instance = 0xAF0F3D9C9F8C858A, .type = 0x376840D7, .group = 0};
+constexpr ScreenKey k_SurfClip {.instance = 0x5555, .type = 0x376840D7, .group = 0};
+constexpr auto k_ByPlaylist = SessionManager::LinkRule::Playlist;
+
+void AddTvPlaylists(SessionManager& manager)
+{
+	ASSERT_TRUE(manager.SetPlaylistClips(k_Action, {k_TvClip, k_ActionClip2, k_SurfAction}));
+	ASSERT_TRUE(manager.SetPlaylistClips(k_Surf, {k_SurfClip, k_SurfAction}));
+	EXPECT_EQ(manager.PlaylistResourceCount(), 2U);
+}
+
+TEST(Sessions, APlaylistResourceLinksTheChannelByItsClip)
+{
+	SessionManager manager({});
+	AddTvPlaylists(manager);
+	ASSERT_TRUE(manager.Play(k_Tv, k_Url));
+	manager.NotePlaylist(k_Tv, {k_Action}, k_ListTime);
+	// A clip that is in no playlist resource of the list does not link.
+	EXPECT_EQ(Link(manager, 0xA000, k_SurfClip), std::nullopt);
+	// Rule 2: the playlist resource of the list has the clip. The time of the list is old, so the time rule cannot link.
+	EXPECT_EQ(Link(manager, 0xB000, k_TvClip, k_Later, k_ByPlaylist), k_Tv);
+	EXPECT_EQ(manager.MatchChannel(0xB000, std::nullopt), manager.Find(k_Tv));
+	EXPECT_EQ(manager.Status()["playlistResources"], 2);
+}
+
+TEST(Sessions, TheLinkStaysOnTheNextClipOfThePlaylist)
+{
+	SessionManager manager({});
+	AddTvPlaylists(manager);
+	ASSERT_TRUE(manager.Play(k_Tv, k_Url));
+	manager.NotePlaylist(k_Tv, {k_Action}, k_ListTime);
+	manager.NotePlaylist(k_OtherTv, {k_Surf}, k_ListTime);
+	EXPECT_EQ(Link(manager, 0xA000, k_ActionClip2, k_Later, k_ByPlaylist), k_Tv);
+	// Rule 1: the channel goes to the next clip of the same playlist, and the link stays.
+	EXPECT_EQ(Link(manager, 0xA000, k_TvClip, k_Later + 30000ms), std::nullopt);
+	EXPECT_EQ(Link(manager, 0xA000, k_SurfAction, k_Later + 60000ms), std::nullopt);
+	EXPECT_EQ(manager.MatchChannel(0xA000, std::nullopt), manager.Find(k_Tv));
+}
+
+TEST(Sessions, AClipInTwoPlaylistsUsesTheOrderOfRule2)
+{
+	SessionManager manager({});
+	AddTvPlaylists(manager);
+	ASSERT_TRUE(manager.Play(k_Tv, k_Url));
+	manager.NotePlaylist(k_OtherTv, {k_Surf}, k_ListTime);
+	manager.NotePlaylist(k_Tv, {k_Action}, k_ListTime);
+	// Both lists have the clip, and no object has a channel: the newest list comes first.
+	EXPECT_EQ(Link(manager, 0xA000, k_SurfAction, k_Later, k_ByPlaylist), k_Tv);
+	// The second channel with the same clip goes to the other TV, because the list of the first TV is shown.
+	EXPECT_EQ(Link(manager, 0xB000, k_SurfAction, k_Later, k_ByPlaylist), k_OtherTv);
+	EXPECT_EQ(manager.MatchChannel(0xA000, std::nullopt), manager.Find(k_Tv));
+	EXPECT_EQ(manager.MatchChannel(0xB000, std::nullopt), nullptr);
+	// The next clips stay on their channels.
+	EXPECT_EQ(Link(manager, 0xA000, k_TvClip), std::nullopt);
+	EXPECT_EQ(Link(manager, 0xB000, k_SurfClip), std::nullopt);
+}
+
+TEST(Sessions, AClipKeyInTheListGoesBeforeAPlaylistResource)
+{
+	SessionManager manager({});
+	AddTvPlaylists(manager);
+	manager.NotePlaylist(k_Tv, {k_Action, k_SurfClip}, k_ListTime);
+	EXPECT_EQ(Link(manager, 0xA000, k_SurfClip), k_Tv);
+}
+
+TEST(Sessions, RefusesABadPlaylistResource)
+{
+	SessionManager manager({});
+	// The playlist key must have the type of a playlist.
+	EXPECT_FALSE(manager.SetPlaylistClips(k_Music, {k_TvClip}));
+	// A clip key of the type 0, or a playlist in a playlist.
+	EXPECT_FALSE(manager.SetPlaylistClips(k_Action, {k_TvClip, ScreenKey {.instance = 1}}));
+	EXPECT_FALSE(manager.SetPlaylistClips(k_Action, {k_Surf}));
+	// Too many clips.
+	const std::vector<ScreenKey> tooMany(SessionManager::k_MaxPlaylistClips + 1, k_TvClip);
+	EXPECT_FALSE(manager.SetPlaylistClips(k_Action, tooMany));
+	EXPECT_EQ(manager.PlaylistResourceCount(), 0U);
+	// The limit of resources. A known resource can change when the limit is full.
+	for (std::uint64_t index = 0; index < SessionManager::k_MaxPlaylistResources; ++index)
+	{
+		ASSERT_TRUE(manager.SetPlaylistClips(ScreenKey {.instance = index, .type = k_PlaylistType}, {k_TvClip}));
+	}
+	EXPECT_FALSE(manager.SetPlaylistClips(k_Action, {k_TvClip}));
+	EXPECT_TRUE(manager.SetPlaylistClips(ScreenKey {.instance = 0, .type = k_PlaylistType}, {k_ActionClip2}));
+	// An empty list removes a resource.
+	EXPECT_TRUE(manager.SetPlaylistClips(ScreenKey {.instance = 0, .type = k_PlaylistType}, {}));
+	EXPECT_EQ(manager.PlaylistResourceCount(), SessionManager::k_MaxPlaylistResources - 1);
+	EXPECT_TRUE(manager.SetPlaylistClips(k_Action, {k_TvClip}));
+}
+
+TEST(Sessions, AFailedChangeKeepsTheOldClips)
+{
+	SessionManager manager({});
+	ASSERT_TRUE(manager.SetPlaylistClips(k_Action, {k_TvClip}));
+	EXPECT_FALSE(manager.SetPlaylistClips(k_Action, {ScreenKey {.instance = 1}}));
+	manager.NotePlaylist(k_Tv, {k_Action}, k_ListTime);
+	EXPECT_EQ(Link(manager, 0xA000, k_TvClip, k_Later, k_ByPlaylist), k_Tv);
+}
+
+TEST(Sessions, TheTimeRuleWorksWithNoPlaylistResources)
+{
+	SessionManager manager({});
+	ASSERT_TRUE(manager.Play(k_Tv, k_Url));
+	manager.NotePlaylist(k_Tv, {k_Action}, 5000ms);
+	EXPECT_EQ(Link(manager, 0xA000, k_TvClip, 5016ms, k_Time), k_Tv);
+	EXPECT_EQ(manager.MatchChannel(0xA000, std::nullopt), manager.Find(k_Tv));
+}
+
+TEST(Sessions, TheTimeRuleStaysForAClipThatIsInNoResource)
+{
+	SessionManager manager({});
+	AddTvPlaylists(manager);
+	manager.NotePlaylist(k_Tv, {k_Action}, 5000ms);
+	// The game can have a playlist resource that the script mod did not read, for example of a new pack.
+	EXPECT_EQ(Link(manager, 0xA000, k_Music, 5016ms, k_Time), k_Tv);
+}
+
 TEST(Sessions, AnyObjectTakesTheFirstFreeChannel)
 {
 	SessionManager manager({});

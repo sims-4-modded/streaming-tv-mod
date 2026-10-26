@@ -28,6 +28,21 @@ std::string ClipKeyText(const ScreenKey& key)
 	return std::format("{:016x}:{:08x}:{:08x}", key.instance, key.type, key.group);
 }
 
+/// The text of the rule of a link, for the diagnostic line of the link.
+const char* LinkRuleText(SessionManager::LinkRule rule)
+{
+	switch (rule)
+	{
+	case SessionManager::LinkRule::Clip:
+		return "the same clip";
+	case SessionManager::LinkRule::Playlist:
+		return "the playlist resource";
+	case SessionManager::LinkRule::Time:
+		return "the time";
+	}
+	return "an unknown rule";
+}
+
 /// The time of the steady clock in milliseconds, for the link of a channel.
 std::chrono::milliseconds NowMs()
 {
@@ -258,6 +273,12 @@ void TvRuntime::SetScreenKey(std::uint64_t objectId, const ScreenKey& key)
 	_sessions.SetScreenKey(objectId, key);
 }
 
+ts4::Result<void> TvRuntime::SetPlaylistClips(const ScreenKey& playlist, std::vector<ScreenKey> clips)
+{
+	const std::lock_guard lock(_mutex);
+	return _sessions.SetPlaylistClips(playlist, std::move(clips));
+}
+
 void TvRuntime::Run(SessionActions&& actions)
 {
 	for (const auto& command : actions.commands)
@@ -460,7 +481,7 @@ void TvRuntime::OnRenderFrame(std::uintptr_t renderer, std::uintptr_t frame)
 				if (_linkLines < k_MaxPlaylistLines || _sessions.Find(linked->objectId) != nullptr)
 				{
 					++_linkLines;
-					const char* rule = linked->rule == SessionManager::LinkRule::Clip ? "the same clip" : "the time";
+					const char* rule = LinkRuleText(linked->rule);
 					Log(TS4_LOG_INFO,
 					    std::format("frames: the playlist of the object {:#x} links the channel {:#x} (clip {}, by {})",
 					                linked->objectId, channel, ClipKeyText(*clipKey), rule));

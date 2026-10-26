@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
 #include <cstdint>
 
@@ -35,8 +36,12 @@ struct ScreenKey
 	std::uint32_t type = 0;
 	std::uint32_t group = 0;
 
-	[[nodiscard]] bool operator==(const ScreenKey&) const = default;
+	[[nodiscard]] auto operator<=>(const ScreenKey&) const = default;
 };
+
+/// The type of a playlist resource. A channel that gets a key of this type plays the clips of the resource in a
+/// random order, and does not play the key itself.
+constexpr std::uint32_t k_PlaylistType = 0x545AC67A;
 
 /// The position (x, y, z) and the orientation (a quaternion x, y, z, w) of an object, in the axes of the game.
 struct ObjectTransform
@@ -138,11 +143,24 @@ public:
 	/// Keep the clip keys of the newest list of clips that the game gave to an object at the time `now`.
 	void NotePlaylist(std::uint64_t objectId, std::vector<ScreenKey> keys, std::chrono::milliseconds now);
 
+	/// The limit of playlist resources that the manager keeps. The game has approximately 24.
+	static constexpr std::size_t k_MaxPlaylistResources = 256;
+	/// The limit of clips in one playlist resource. The game has approximately 76 clips in all of its playlists.
+	static constexpr std::size_t k_MaxPlaylistClips = 1024;
+	/// Keep the clip keys of the playlist resource `playlist`, from the script mod. An empty list removes the
+	/// resource. The result is an error if the type of `playlist` is not `k_PlaylistType`, if a clip key has the type
+	/// 0 or `k_PlaylistType`, if the list has more than `k_MaxPlaylistClips` keys, or if the limit of resources is
+	/// full. After an error, the manager keeps the old clips of the resource.
+	[[nodiscard]] ts4::Result<void> SetPlaylistClips(const ScreenKey& playlist, std::vector<ScreenKey> clips);
+	/// The number of playlist resources that the manager keeps.
+	[[nodiscard]] std::size_t PlaylistResourceCount() const { return _playlistClips.size(); }
+
 	/// The rule that made a new link of a channel.
 	enum class LinkRule
 	{
-		Clip, ///< The newest list of the object has the clip of the channel.
-		Time, ///< The channel started a new clip just after the object got its newest list.
+		Clip,     ///< The newest list of the object has the clip of the channel.
+		Playlist, ///< A playlist resource in the newest list of the object has the clip of the channel.
+		Time,     ///< The channel started a new clip just after the object got its newest list.
 	};
 	struct ChannelLink
 	{
@@ -153,7 +171,8 @@ public:
 	static constexpr std::chrono::milliseconds k_LinkWindow {1500};
 
 	/// Link a channel to an object by the clip that the channel plays at the time `now`. "Not shown" below means that
-	/// no channel showed a clip of the newest list of the object yet. The rules, in this order:
+	/// no channel showed a clip of the newest list of the object yet. "Has the clip" means that the newest list has the
+	/// clip, or has the key of a playlist resource whose clips (`SetPlaylistClips`) have it. The rules, in this order:
 	/// 1. If the object of the channel has this clip in its newest list (or has an empty list), the link stays.
 	/// 2. Else the channel goes to an object whose newest list has this clip and is not shown. An object with no
 	///    channel comes first. Of these, the object with the newest list comes first.
@@ -202,6 +221,15 @@ private:
 		std::uint64_t shownNumber = 0;
 	};
 
+	/// How the newest list of an object has a clip.
+	enum class ClipMatch
+	{
+		None,
+		Direct,   ///< The list has the clip key.
+		Playlist, ///< The list has the key of a playlist resource that has the clip.
+	};
+	[[nodiscard]] ClipMatch MatchClip(const KnownObject& known, const ScreenKey& clipKey) const;
+
 	[[nodiscard]] KnownObject& Known(std::uint64_t objectId);
 	[[nodiscard]] SessionActions Release(std::size_t index);
 	[[nodiscard]] SessionActions Apply(Session& session);
@@ -209,6 +237,8 @@ private:
 	SessionSettings _settings;
 	std::vector<Session> _sessions;
 	std::map<std::uint64_t, KnownObject> _objects;
+	/// The clip keys of each playlist resource, from the script mod.
+	std::map<ScreenKey, std::vector<ScreenKey>> _playlistClips;
 	std::int32_t _nextHelperId = 1;
 	std::uint64_t _nextPlaylistNumber = 1;
 	/// The clip of each channel at the last link call.

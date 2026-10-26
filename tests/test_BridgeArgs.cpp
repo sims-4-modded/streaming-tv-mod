@@ -85,6 +85,36 @@ TEST(BridgeArgs, ReadsAScreenKey)
 	EXPECT_FALSE(ReadScreenKey(1, 0, 0));
 }
 
+TEST(BridgeArgs, ReadsTheClipKeysOfAPlaylist)
+{
+	// Two rows: a little-endian u64 instance, u32 type and u32 group.
+	const std::array<std::uint8_t, 32> bytes {
+	    0xC3, 0x1E, 0x0F, 0x8E, 0x03, 0xC4, 0x6F, 0xEA, 0xD7, 0x40, 0x68, 0x37, 0x00, 0x00, 0x00, 0x00, //
+	    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x80, //
+	};
+	const auto keys = ReadClipKeys(bytes.data(), static_cast<std::uint32_t>(bytes.size()));
+	ASSERT_TRUE(keys);
+	ASSERT_EQ(keys->size(), 2U);
+	EXPECT_EQ((*keys)[0], (ScreenKey {.instance = 0xEA6FC4038E0F1EC3, .type = 0x376840D7, .group = 0}));
+	EXPECT_EQ((*keys)[1], (ScreenKey {.instance = 1, .type = 2, .group = 0x80000003}));
+	// No keys.
+	const auto none = ReadClipKeys(nullptr, 0);
+	ASSERT_TRUE(none);
+	EXPECT_TRUE(none->empty());
+}
+
+TEST(BridgeArgs, RefusesBadClipKeys)
+{
+	const std::array<std::uint8_t, 32> bytes {};
+	EXPECT_FALSE(ReadClipKeys(bytes.data(), 15));
+	EXPECT_FALSE(ReadClipKeys(bytes.data(), 17));
+	EXPECT_FALSE(ReadClipKeys(nullptr, 16));
+	// More keys than the limit. The function checks the size before it reads a byte.
+	const auto tooMany = static_cast<std::uint32_t>((SessionManager::k_MaxPlaylistClips + 1) * k_ClipKeyBytes);
+	EXPECT_FALSE(ReadClipKeys(bytes.data(), tooMany));
+	EXPECT_FALSE(ReadClipKeys(bytes.data(), UINT32_MAX - 15));
+}
+
 TEST(BridgeArgs, ReadsTheSpeed)
 {
 	const auto speed = ReadSpeed(5, 1.0, 1);

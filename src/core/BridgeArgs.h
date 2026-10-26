@@ -11,20 +11,21 @@
 #include <optional>
 #include <span>
 #include <string_view>
+#include <vector>
 
 #include <common/Result.h>
 #include <core/Sessions.h>
 #include <core/SpeedPolicy.h>
 #include <nlohmann/json.hpp>
 
-/// The checks of the arguments of the C interface that the script mod calls (`YoutubeTv*` exports, version 1). The
+/// The checks of the arguments of the C interface that the script mod calls (`YoutubeTv*` exports, version 2). The
 /// script mod calls the interface through `ctypes`, so each pointer can be null and each value can be wrong. Each
 /// check returns an error text for the last error of the interface.
 namespace ts4_mod::youtube_tv::bridge
 {
 
-/// The version of the C interface.
-constexpr std::uint32_t k_BridgeVersion = 1;
+/// The version of the C interface. Version 2 added `YoutubeTvSetPlaylistClips`. The other functions did not change.
+constexpr std::uint32_t k_BridgeVersion = 2;
 
 /// The largest URL that the interface reads, in bytes.
 constexpr std::size_t k_MaxUrlBytes = 2048;
@@ -46,6 +47,14 @@ constexpr float k_MaxCoordinate = 1.0e5F;
 
 /// Read the clip key of a TV. The type must not be 0.
 [[nodiscard]] ts4::Result<ScreenKey> ReadScreenKey(std::uint64_t instance, std::uint32_t type, std::uint32_t group);
+
+/// The size of one clip key in the bytes of `ReadClipKeys`.
+constexpr std::size_t k_ClipKeyBytes = 16;
+
+/// Read the clip keys of a playlist resource: `size` bytes of 16-byte rows (a little-endian u64 instance, u32 type and
+/// u32 group). The size must be a multiple of 16 and give at most `SessionManager::k_MaxPlaylistClips` keys. A null
+/// pointer is correct only with the size 0. The function does not check the types of the keys.
+[[nodiscard]] ts4::Result<std::vector<ScreenKey>> ReadClipKeys(const std::uint8_t* data, std::uint32_t size);
 
 /// The clock of the game, as the script mod gives it.
 struct SpeedArguments

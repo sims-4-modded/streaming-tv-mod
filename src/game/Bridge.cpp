@@ -2,7 +2,7 @@
  * Copyright (c) 2026 Sims 4 mods developers
  *****************************************************************************/
 
-// The C interface for the script mod (version 1, see `docs/design.md`). The script mod calls it through `ctypes` on the
+// The C interface for the script mod (version 2, see `docs/design.md`). The script mod calls it through `ctypes` on the
 // main thread, until the native Python module of the extender exists. Each function checks each argument, catches
 // each exception, and sets the last error of the interface.
 
@@ -153,6 +153,23 @@ extern "C" __declspec(dllexport) void __cdecl YoutubeTvSetScreenKey(std::uint64_
 		}
 		mod.Runtime().SetScreenKey(objectId, *key);
 		return {};
+	});
+}
+
+extern "C" __declspec(dllexport) std::uint32_t __cdecl YoutubeTvSetPlaylistClips(std::uint64_t instance, std::uint32_t type,
+                                                                                 std::uint32_t group,
+                                                                                 const std::uint8_t* clipKeys,
+                                                                                 std::uint32_t size)
+{
+	return Call([&](YoutubeTvMod& mod) -> std::string {
+		auto clips = bridge::ReadClipKeys(clipKeys, size);
+		if (!clips)
+		{
+			return clips.GetError().message;
+		}
+		auto kept =
+		    mod.Runtime().SetPlaylistClips(ScreenKey {.instance = instance, .type = type, .group = group}, std::move(*clips));
+		return kept ? std::string {} : kept.GetError().message;
 	});
 }
 

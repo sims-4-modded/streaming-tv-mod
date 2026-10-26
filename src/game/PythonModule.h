@@ -13,8 +13,9 @@ namespace ts4_mod::youtube_tv
 inline constexpr const char* k_PythonModuleName = "ts4_youtube_tv_native";
 
 /// The Python module `ts4_youtube_tv_native` for the script mod. Its functions are the functions of the C interface
-/// of the bridge: `api_version`, `play`, `stop`, `stop_all`, `set_speed`, `set_transform`, `set_screen_key` and
-/// `last_error`. The game Python has no `ctypes`, so the script mod cannot call the C interface directly.
+/// of the bridge: `api_version`, `play`, `stop`, `stop_all`, `set_speed`, `set_transform`, `set_screen_key`,
+/// `set_playlist_clips` and `last_error`. The game Python has no `ctypes`, so the script mod cannot call the C interface
+/// directly.
 namespace python_module
 {
 

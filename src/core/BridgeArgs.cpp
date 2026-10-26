@@ -112,6 +112,42 @@ ts4::Result<ScreenKey> ReadScreenKey(std::uint64_t instance, std::uint32_t type,
 	return ScreenKey {.instance = instance, .type = type, .group = group};
 }
 
+ts4::Result<std::vector<ScreenKey>> ReadClipKeys(const std::uint8_t* data, std::uint32_t size)
+{
+	if (size % k_ClipKeyBytes != 0)
+	{
+		return ts4::MakeError("the size {} of the clip keys is not a multiple of {}", size, k_ClipKeyBytes);
+	}
+	const std::size_t count = size / k_ClipKeyBytes;
+	if (count > SessionManager::k_MaxPlaylistClips)
+	{
+		return ts4::MakeError("the playlist has {} clips, more than the limit of {}", count,
+		                      SessionManager::k_MaxPlaylistClips);
+	}
+	if (data == nullptr && size != 0)
+	{
+		return ts4::MakeError("the clip keys are null");
+	}
+	const auto readLe = [](const std::uint8_t* bytes, std::size_t width) {
+		std::uint64_t value = 0;
+		for (std::size_t index = width; index > 0; --index)
+		{
+			value = (value << 8U) | bytes[index - 1];
+		}
+		return value;
+	};
+	std::vector<ScreenKey> keys;
+	keys.reserve(count);
+	for (std::size_t index = 0; index < count; ++index)
+	{
+		const auto* row = data + index * k_ClipKeyBytes;
+		keys.push_back(ScreenKey {.instance = readLe(row, 8),
+		                          .type = static_cast<std::uint32_t>(readLe(row + 8, 4)),
+		                          .group = static_cast<std::uint32_t>(readLe(row + 12, 4))});
+	}
+	return keys;
+}
+
 ts4::Result<SpeedArguments> ReadSpeed(std::uint32_t clockSpeedMode, double speedScale, std::uint32_t superSpeed)
 {
 	const auto mode = ToClockSpeedMode(clockSpeedMode);

@@ -212,6 +212,57 @@ void SessionManager::NotePlaylist(std::uint64_t objectId, std::vector<ScreenKey>
 	known.playlistTime = now;
 }
 
+ts4::Result<void> SessionManager::SetPlaylistClips(const ScreenKey& playlist, std::vector<ScreenKey> clips)
+{
+	if (playlist.type != k_PlaylistType)
+	{
+		return ts4::MakeError("the type {:#x} of the playlist key is not {:#x}", playlist.type, k_PlaylistType);
+	}
+	if (clips.size() > k_MaxPlaylistClips)
+	{
+		return ts4::MakeError("the playlist has {} clips, more than the limit of {}", clips.size(), k_MaxPlaylistClips);
+	}
+	// The channel of the game opens each key of a playlist as a clip, so a key of a playlist in a playlist does not play.
+	if (const auto bad =
+	        std::ranges::find_if(clips, [](const ScreenKey& key) { return key.type == 0 || key.type == k_PlaylistType; });
+	    bad != clips.end())
+	{
+		return ts4::MakeError("the clip key {} of the playlist has the type {:#x}", bad - clips.begin(), bad->type);
+	}
+	if (clips.empty())
+	{
+		_playlistClips.erase(playlist);
+		return {};
+	}
+	if (_playlistClips.size() >= k_MaxPlaylistResources && !_playlistClips.contains(playlist))
+	{
+		return ts4::MakeError("the limit of {} playlists is full", k_MaxPlaylistResources);
+	}
+	_playlistClips[playlist] = std::move(clips);
+	return {};
+}
+
+SessionManager::ClipMatch SessionManager::MatchClip(const KnownObject& known, const ScreenKey& clipKey) const
+{
+	if (std::ranges::find(known.playlist, clipKey) != known.playlist.end())
+	{
+		return ClipMatch::Direct;
+	}
+	for (const auto& key : known.playlist)
+	{
+		if (key.type != k_PlaylistType)
+		{
+			continue;
+		}
+		if (const auto it = _playlistClips.find(key);
+		    it != _playlistClips.end() && std::ranges::find(it->second, clipKey) != it->second.end())
+		{
+			return ClipMatch::Playlist;
+		}
+	}
+	return ClipMatch::None;
+}
+
 std::optional<SessionManager::ChannelLink> SessionManager::LinkChannelByClip(std::uintptr_t channel, const ScreenKey& clipKey,
                                                                              std::chrono::milliseconds now)
 {
@@ -233,9 +284,7 @@ std::optional<SessionManager::ChannelLink> SessionManager::LinkChannelByClip(std
 		}
 		_channelClips.emplace(channel, clipKey);
 	}
-	const auto hasClip = [&clipKey](const KnownObject& known) {
-		return std::ranges::find(known.playlist, clipKey) != known.playlist.end();
-	};
+	const auto hasClip = [this, &clipKey](const KnownObject& known) { return MatchClip(known, clipKey) != ClipMatch::None; };
 	const auto notShown = [](const KnownObject& known) { return known.playlistNumber > known.shownNumber; };
 	std::optional<std::uint64_t> owner;
 	for (auto& [id, known] : _objects)
@@ -278,7 +327,8 @@ std::optional<SessionManager::ChannelLink> SessionManager::LinkChannelByClip(std
 	}
 	if (best)
 	{
-		return link(*best, channel, LinkRule::Clip);
+		const auto rule = MatchClip(*bestKnown, clipKey) == ClipMatch::Direct ? LinkRule::Clip : LinkRule::Playlist;
+		return link(*best, channel, rule);
 	}
 	if (!changed)
 	{
@@ -493,6 +543,7 @@ nlohmann::json SessionManager::Status() const
 	    {"muted", playback.muted},
 	    {"videos", std::move(videos)},
 	    {"knownObjects", _objects.size()},
+	    {"playlistResources", _playlistClips.size()},
 	};
 }
 

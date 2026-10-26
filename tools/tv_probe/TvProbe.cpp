@@ -18,11 +18,13 @@
 #include <cstring>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <format>
 #include <functional>
 #include <numbers>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -152,7 +154,8 @@ int ToneTest(Report& report)
 }
 
 /// Fake objects of the game: a renderer, a channel that plays one clip, a frame with three planes, and a message with
-/// a list of clips for the TV, with the offsets of `k_Layout`.
+/// a list of clips for the TV, with the offsets of `k_Layout`. The list has the key `listKey`. The channel plays
+/// `channelClip`, or `listKey` if it is empty.
 class FakeGame
 {
 public:
@@ -170,17 +173,18 @@ public:
 	/// The bytes of guard after each plane.
 	static constexpr std::size_t k_GuardBytes = 4096;
 
-	FakeGame(std::uint32_t width, std::uint32_t height, std::uint32_t padding, const ScreenKey& clip)
+	FakeGame(std::uint32_t width, std::uint32_t height, std::uint32_t padding, const ScreenKey& listKey,
+	         std::optional<ScreenKey> channelClip = std::nullopt)
 	    : _renderer(0x200)
 	    , _channel(0x200)
 	    , _frame(0x200)
 	    , _message(0x100)
-	    , _messageBytes(playlist::MakeMessage(1, std::span(&clip, 1)))
+	    , _messageBytes(playlist::MakeMessage(1, std::span(&listKey, 1)))
 	{
 		Put(_renderer, k_Layout.rendererChannel, Address(_channel));
 		Put(_renderer, k_Layout.rendererWidth, width);
 		Put(_renderer, k_Layout.rendererHeight, height);
-		Put(_channel, k_ChannelLayout.channelClipKey, clip);
+		Put(_channel, k_ChannelLayout.channelClipKey, channelClip.value_or(listKey));
 		Put(_message, k_ChannelLayout.messageObjectId, k_Tv);
 		Put(_message, k_ChannelLayout.messageData, Address(_messageBytes));
 		Put(_message, k_ChannelLayout.messageSize, static_cast<std::int32_t>(_messageBytes.size()));
@@ -326,15 +330,33 @@ int HelperTest(Report& report, const Options& options)
 	settings.helperPath = helper.string();
 	settings.width = 640;
 	settings.height = 368;
+	// The log function can run on a thread of the helper, so the flag is atomic.
+	std::atomic<bool> playlistLink = false;
 	TvRuntime runtime(
-	    settings, [](Ts4LogLevel, const std::string& text) { Print("  log: " + text); }, std::make_unique<ProcessMemory>());
+	    settings,
+	    [&playlistLink](Ts4LogLevel, const std::string& text) {
+		    if (text.find("by the playlist resource") != std::string::npos)
+		    {
+			    playlistLink = true;
+		    }
+		    Print("  log: " + text);
+	    },
+	    std::make_unique<ProcessMemory>());
 	runtime.SetRendererLayout(FakeGame::k_Layout);
 	runtime.SetChannelLayout(FakeGame::k_ChannelLayout);
 
+	// As in the game: the list of the TV has the key of a playlist resource, and the channel plays a VP6 clip of that
+	// resource. The script mod gives the clips of the resource before the list.
+	constexpr ScreenKey k_PlaylistKey {.instance = 0xEFE29AB011F5411A, .type = k_PlaylistType, .group = 0x00BF458B};
+	constexpr ScreenKey k_PlaylistClip {.instance = 0xEA6FC4038E0F1EC3, .type = 0x376840D7, .group = 0};
+	const auto kept = runtime.SetPlaylistClips(k_PlaylistKey, {k_PlaylistClip});
+	report.Check("the runtime keeps the clips of a playlist resource", kept.HasValue(), kept ? "" : kept.GetError().message);
 	// The same size as the frames of the helper, with padding in each row.
-	FakeGame same(640, 368, 64, {.instance = 0x5D630A58015C3E89, .type = 0x545AC67A, .group = 0x00BF458B});
-	// The game gives a list of clips to the TV. The first frame of the channel that plays that clip links the TV.
+	FakeGame same(640, 368, 64, k_PlaylistKey, k_PlaylistClip);
+	// The game gives a list of clips to the TV. The first frame of the channel that plays a clip of the list links the TV.
 	runtime.OnPlaylistMessage(same.Message());
+	runtime.OnRenderFrame(same.Renderer(), same.Frame());
+	report.Check("the playlist resource links the channel", playlistLink);
 
 	const auto played = runtime.Play(k_Tv, options.video);
 	report.Check("play", played.HasValue(), played ? "" : played.GetError().message);
