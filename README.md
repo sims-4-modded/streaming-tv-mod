@@ -3,9 +3,9 @@
 A DLL mod for the Sims 4 mod loader that shows a YouTube video on the screen of a TV in the game.
 
 - A Sim can watch a YouTube video on a TV from the pie menu.
-- The helper `youtube_tv_host.exe` plays the video in CEF, without a window.
+- The helper `youtube_tv_host.exe` plays the video in CEF (Chrome), without a window.
 - The DLL mod writes the frames on the screen of the TV, and plays the sound at the position of the TV.
-- The script mod gives the TV, the URL and the clock.
+- The script mod gives the TV, the URL and the clock interactions.
 
 ## Build
 
@@ -19,7 +19,7 @@ tools\preset.bat x64-release
 python tools\build_script_mod.py
 ```
 
-A clone of a local repository needs `git -c protocol.file.allow=always submodule update --init`.
+A clone of a local repository needs `git submodule update --init`.
 
 ## Tests
 
