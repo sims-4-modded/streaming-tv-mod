@@ -7,6 +7,8 @@ A DLL mod for the Sims 4 mod loader that shows a YouTube video on the screen of 
 - The DLL mod writes the frames on the screen of the TV, and plays the sound at the position of the TV.
 - The script mod gives the TV, the URL and the clock interactions.
 
+<img width="1021" height="723" alt="image" src="https://github.com/user-attachments/assets/66e774e4-f5ec-432f-b87c-72ec90be148b" />
+
 ## Build
 
 Requirements: Visual Studio with the C++ tools, and the vcpkg checkout of the workspace (`<workspace>\vcpkg`, where
